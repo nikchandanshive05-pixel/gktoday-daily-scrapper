@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 GKToday Daily Scraper + Quiz + PDF Generator
-Scrapes articles and quiz from GKToday, generates professional PDF
 """
 
 import requests
@@ -13,7 +12,6 @@ import os
 import sys
 import time
 
-# PDF Generation
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import mm
@@ -21,7 +19,7 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.lib.colors import HexColor
 
 import logging
@@ -90,7 +88,6 @@ class GKTodayScraper:
         if not url.startswith('http'):
             url = self.BASE_URL + url if url.startswith('/') else self.BASE_URL + '/' + url
         
-        # Walk siblings
         img = None
         date = ""
         category = "General"
@@ -275,7 +272,7 @@ class GKTodayScraper:
         
         segment = text[idx:idx + 1500]
         for letter in ['a', 'b', 'c', 'd']:
-            pattern = re.compile(r'[\n\r\s]' + letter + r'[\)\.]\s*(.*?)(?=[\n\r\s][b-d][\)\.]|[\n\r\s]Answer|[\n\r\s]Explanation|$)', re.DOTALL | re.IGNORECASE)
+            pattern = re.compile(r'[\n\r\s]' + letter + r'[\)\.\s]\s*(.*?)(?=[\n\r\s][b-d][\)\.\s]|[\n\r\s]Answer|[\n\r\s]Explanation|$)', re.DOTALL | re.IGNORECASE)
             match = pattern.search(segment)
             if match:
                 opts.append(match.group(1).strip()[:200])
@@ -364,53 +361,54 @@ class PDFGenerator:
     def _make_styles(self):
         s = getSampleStyleSheet()
         
-        s.add(ParagraphStyle('Title', parent=s['Heading1'], fontSize=24, leading=30,
+        # UNIQUE names with GK prefix - no collisions with built-in styles
+        s.add(ParagraphStyle('GKTitle', parent=s['Heading1'], fontSize=24, leading=30,
             textColor=HexColor('#1a5276'), alignment=TA_CENTER, spaceAfter=8, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('Sub', parent=s['Normal'], fontSize=11, leading=14,
+        s.add(ParagraphStyle('GKSub', parent=s['Normal'], fontSize=11, leading=14,
             textColor=HexColor('#7f8c8d'), alignment=TA_CENTER, spaceAfter=18, fontName='Helvetica'))
         
-        s.add(ParagraphStyle('SecHead', parent=s['Heading2'], fontSize=13, leading=17,
+        s.add(ParagraphStyle('GKSecHead', parent=s['Heading2'], fontSize=13, leading=17,
             textColor=HexColor('#1a5276'), spaceBefore=14, spaceAfter=6, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('ArtTitle', parent=s['Heading3'], fontSize=10, leading=14,
+        s.add(ParagraphStyle('GKArtTitle', parent=s['Heading3'], fontSize=10, leading=14,
             textColor=HexColor('#2874a6'), spaceBefore=8, spaceAfter=3, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('Content', parent=s['Normal'], fontSize=8, leading=12,
+        s.add(ParagraphStyle('GKContent', parent=s['Normal'], fontSize=8, leading=12,
             textColor=HexColor('#2c3e50'), alignment=TA_JUSTIFY, spaceAfter=4, fontName='Helvetica'))
         
-        s.add(ParagraphStyle('KeyPt', parent=s['Normal'], fontSize=7, leading=11,
+        s.add(ParagraphStyle('GKKeyPt', parent=s['Normal'], fontSize=7, leading=11,
             textColor=HexColor('#2c3e50'), leftIndent=12, spaceAfter=2, fontName='Helvetica'))
         
-        s.add(ParagraphStyle('BadgeH', parent=s['Normal'], fontSize=6, leading=8,
+        s.add(ParagraphStyle('GKBadgeH', parent=s['Normal'], fontSize=6, leading=8,
             textColor=colors.white, backColor=HexColor('#e74c3c'), alignment=TA_CENTER,
             spaceAfter=2, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('BadgeM', parent=s['Normal'], fontSize=6, leading=8,
+        s.add(ParagraphStyle('GKBadgeM', parent=s['Normal'], fontSize=6, leading=8,
             textColor=colors.white, backColor=HexColor('#f39c12'), alignment=TA_CENTER,
             spaceAfter=2, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('BadgeL', parent=s['Normal'], fontSize=6, leading=8,
+        s.add(ParagraphStyle('GKBadgeL', parent=s['Normal'], fontSize=6, leading=8,
             textColor=colors.white, backColor=HexColor('#95a5a6'), alignment=TA_CENTER,
             spaceAfter=2, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('QuizHead', parent=s['Heading2'], fontSize=15, leading=19,
+        s.add(ParagraphStyle('GKQuizHead', parent=s['Heading2'], fontSize=15, leading=19,
             textColor=HexColor('#1a5276'), spaceBefore=16, spaceAfter=10, alignment=TA_CENTER,
             fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('QText', parent=s['Normal'], fontSize=9, leading=13,
+        s.add(ParagraphStyle('GKQText', parent=s['Normal'], fontSize=9, leading=13,
             textColor=HexColor('#2c3e50'), spaceBefore=10, spaceAfter=4, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('QOpt', parent=s['Normal'], fontSize=8, leading=12,
+        s.add(ParagraphStyle('GKQOpt', parent=s['Normal'], fontSize=8, leading=12,
             textColor=HexColor('#2c3e50'), leftIndent=15, spaceAfter=1, fontName='Helvetica'))
         
-        s.add(ParagraphStyle('QAns', parent=s['Normal'], fontSize=8, leading=12,
+        s.add(ParagraphStyle('GKQAns', parent=s['Normal'], fontSize=8, leading=12,
             textColor=HexColor('#27ae60'), leftIndent=15, spaceAfter=4, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('QExp', parent=s['Normal'], fontSize=7, leading=11,
+        s.add(ParagraphStyle('GKQExp', parent=s['Normal'], fontSize=7, leading=11,
             textColor=HexColor('#7f8c8d'), leftIndent=15, spaceAfter=8, fontName='Helvetica-Oblique'))
         
-        s.add(ParagraphStyle('Foot', parent=s['Normal'], fontSize=6, leading=9,
+        s.add(ParagraphStyle('GKFoot', parent=s['Normal'], fontSize=6, leading=9,
             textColor=HexColor('#7f8c8d'), alignment=TA_CENTER, fontName='Helvetica'))
         
         return s
@@ -453,9 +451,9 @@ class PDFGenerator:
     
     def _header(self, data):
         els = []
-        els.append(Paragraph("<b>GK TODAY</b><br/><font size=12>Current Affairs Daily Digest</font>", self.styles['Title']))
+        els.append(Paragraph("<b>GK TODAY</b><br/><font size=12>Current Affairs Daily Digest</font>", self.styles['GKTitle']))
         qc = data.get('quiz', {}).get('total_questions', 0)
-        els.append(Paragraph("%s | %d Articles | %d Quiz Questions | Source: GKToday.in" % (data.get('display_date', data['date']), data['total_articles'], qc), self.styles['Sub']))
+        els.append(Paragraph("%s | %d Articles | %d Quiz Questions | Source: GKToday.in" % (data.get('display_date', data['date']), data['total_articles'], qc), self.styles['GKSub']))
         els.append(Spacer(1, 6))
         
         line = Table([['']], colWidths=[186*mm])
@@ -509,7 +507,7 @@ class PDFGenerator:
     
     def _section(self, sec):
         els = []
-        els.append(Paragraph("%s (%d articles)" % (sec['title'], sec['article_count']), self.styles['SecHead']))
+        els.append(Paragraph("%s (%d articles)" % (sec['title'], sec['article_count']), self.styles['GKSecHead']))
         els.append(Spacer(1, 4))
         
         for art in sec.get('articles', []):
@@ -517,29 +515,30 @@ class PDFGenerator:
             lvl = rel.get('level', 'LOW')
             
             if lvl == 'HIGH':
-                els.append(Paragraph("HIGH PRIORITY", self.styles['BadgeH']))
+                els.append(Paragraph("HIGH PRIORITY", self.styles['GKBadgeH']))
             elif lvl == 'MEDIUM':
-                els.append(Paragraph("MEDIUM PRIORITY", self.styles['BadgeM']))
+                els.append(Paragraph("MEDIUM PRIORITY", self.styles['GKBadgeM']))
             else:
-                els.append(Paragraph("LOW PRIORITY", self.styles['BadgeL']))
+                els.append(Paragraph("LOW PRIORITY", self.styles['GKBadgeL']))
             
-            els.append(Paragraph("<b>%s</b>" % self._clean(art.get('title', '')), self.styles['ArtTitle']))
+            els.append(Paragraph("<b>%s</b>" % self._clean(art.get('title', '')), self.styles['GKArtTitle']))
             
             kps = art.get('key_points', [])
             if kps:
-                els.append(Paragraph("<b>Key Points:</b>", self.styles['Content']))
+                els.append(Paragraph("<b>Key Points:</b>", self.styles['GKContent']))
                 for kp in kps:
-                    els.append(Paragraph("- %s" % self._clean(kp), self.styles['KeyPt']))
+                    els.append(Paragraph("- %s" % self._clean(kp), self.styles['GKKeyPt']))
             
             c = art.get('content', '')
             if len(c) > 350:
                 c = c[:350] + "..."
             if c:
-                els.append(Paragraph(self._clean(c), self.styles['Content']))
+                els.append(Paragraph(self._clean(c), self.styles['GKContent']))
             
             kws = rel.get('matched_keywords', [])
             if kws:
-                els.append(Paragraph("<i>Tags: %s</i>" % ', '.join(kws), ParagraphStyle('tag', parent=self.styles['Content'], fontSize=5, textColor=HexColor('#7f8c8d'), spaceAfter=6)))
+                tag_style = ParagraphStyle('tag', parent=self.styles['GKContent'], fontSize=5, textColor=HexColor('#7f8c8d'), spaceAfter=6)
+                els.append(Paragraph("<i>Tags: %s</i>" % ', '.join(kws), tag_style))
             
             els.append(Spacer(1, 3))
             sep = Table([['']], colWidths=[186*mm])
@@ -553,7 +552,7 @@ class PDFGenerator:
     def _quiz(self, quiz_data):
         els = []
         els.append(PageBreak())
-        els.append(Paragraph("<b>DAILY CURRENT AFFAIRS QUIZ</b><br/><font size=11>%d Questions</font>" % quiz_data['total_questions'], self.styles['QuizHead']))
+        els.append(Paragraph("<b>DAILY CURRENT AFFAIRS QUIZ</b><br/><font size=11>%d Questions</font>" % quiz_data['total_questions'], self.styles['GKQuizHead']))
         els.append(Spacer(1, 8))
         
         for q in quiz_data.get('questions', []):
@@ -562,19 +561,19 @@ class PDFGenerator:
             if not qt:
                 continue
             
-            els.append(Paragraph("Q%d. %s" % (qn, qt), self.styles['QText']))
+            els.append(Paragraph("Q%d. %s" % (qn, qt), self.styles['GKQText']))
             
             for i, opt in enumerate(q.get('options', [])):
                 ol = chr(65 + i)
-                els.append(Paragraph("   %s. %s" % (ol, self._clean(opt)), self.styles['QOpt']))
+                els.append(Paragraph("   %s. %s" % (ol, self._clean(opt)), self.styles['GKQOpt']))
             
             ans = q.get('answer', '')
             if ans:
-                els.append(Paragraph("Answer: %s" % ans, self.styles['QAns']))
+                els.append(Paragraph("Answer: %s" % ans, self.styles['GKQAns']))
             
             exp = q.get('explanation', '')
             if exp:
-                els.append(Paragraph(self._clean(exp), self.styles['QExp']))
+                els.append(Paragraph(self._clean(exp), self.styles['GKQExp']))
             
             els.append(Spacer(1, 6))
         
@@ -583,7 +582,7 @@ class PDFGenerator:
     def _footer(self):
         els = []
         els.append(Spacer(1, 12))
-        els.append(Paragraph("Generated on %s | Source: GKToday.in | For exam preparation only" % datetime.now().strftime('%B %d, %Y'), self.styles['Foot']))
+        els.append(Paragraph("Generated on %s | Source: GKToday.in | For exam preparation only" % datetime.now().strftime('%B %d, %Y'), self.styles['GKFoot']))
         return els
     
     def _page_dec(self, canvas, doc):
