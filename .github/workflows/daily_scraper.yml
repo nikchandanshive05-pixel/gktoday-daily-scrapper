@@ -2,25 +2,22 @@ name: Daily GKToday Scraper + Quiz + Telegram Delivery
 
 on:
   schedule:
-    - cron: '0 8 * * *'  # 8 AM UTC daily
-  workflow_dispatch:       # Manual trigger button
+    - cron: '0 8 * * *'
+  workflow_dispatch:
 
 jobs:
   scrape-and-deliver:
     runs-on: ubuntu-latest
     
     steps:
-    # Step 1: Checkout repository
     - name: Checkout code
       uses: actions/checkout@v4
     
-    # Step 2: Set up Python
     - name: Set up Python 3.10
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
     
-    # Step 3: Install Python packages
     - name: Install Python dependencies
       run: |
         pip install beautifulsoup4==4.12.3
@@ -29,19 +26,16 @@ jobs:
         pip install reportlab==4.0.9
         pip install Pillow==10.2.0
     
-    # Step 4: Create output directories
     - name: Create output directories
       run: |
         mkdir -p output/json
         mkdir -p output/pdfs
     
-    # Step 5: Run the scraper
     - name: Scrape GKToday articles and quiz
       run: |
-        python gktoday_scraper.py --daily --output output
+        python gktoday_scraper.py --daily --output output --telegram "${{ secrets.TELEGRAM_BOT_TOKEN }}" --chat-id "${{ secrets.TELEGRAM_CHAT_ID }}"
       continue-on-error: true
     
-    # Step 6: Check if PDF was generated
     - name: Check PDF output
       id: check_pdf
       run: |
@@ -59,8 +53,7 @@ jobs:
           ls -la output/pdfs/ || true
         fi
     
-    # Step 7: Send PDF to Telegram (if generated)
-    - name: Send PDF to Telegram
+    - name: Send PDF to Telegram (fallback)
       if: steps.check_pdf.outputs.pdf_found == 'true'
       env:
         BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -70,7 +63,6 @@ jobs:
       run: |
         echo "📤 Sending PDF to Telegram..."
         
-        # Send notification message
         curl -s -X POST \
           "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
           -d "chat_id=${CHAT_ID}" \
@@ -78,7 +70,6 @@ jobs:
           -d "text=📰 <b>GKToday Daily Digest</b>%0A%0A📅 Date: $(date +%Y-%m-%d)%0A📄 PDF: ${PDF_NAME}%0A%0A✅ Articles + Quiz scraped from GKToday.in" \
           > /dev/null
         
-        # Send the PDF document
         curl -s -X POST \
           "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
           -F "chat_id=${CHAT_ID}" \
@@ -87,9 +78,8 @@ jobs:
           -F "parse_mode=HTML" \
           > /dev/null
         
-        echo "✅ PDF sent to Telegram successfully!"
+        echo "✅ PDF sent to Telegram!"
     
-    # Step 8: Send failure notification (if PDF not generated)
     - name: Send failure notification
       if: steps.check_pdf.outputs.pdf_found == 'false'
       env:
@@ -100,12 +90,11 @@ jobs:
           "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
           -d "chat_id=${CHAT_ID}" \
           -d "parse_mode=HTML" \
-          -d "text=⚠️ <b>GKToday Scraper Alert</b>%0A%0A❌ PDF generation failed for $(date +%Y-%m-%d)%0A%0A🔧 Check GitHub Actions logs:%0A${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+          -d "text=⚠️ <b>GKToday Scraper Alert</b>%0A%0A❌ PDF generation failed for $(date +%Y-%m-%d)%0A%0A🔧 Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
           > /dev/null
         
-        echo "⚠️ Failure notification sent to Telegram"
+        echo "⚠️ Failure notification sent"
     
-    # Step 9: Upload PDF as GitHub artifact
     - name: Upload PDF artifact
       if: steps.check_pdf.outputs.pdf_found == 'true'
       uses: actions/upload-artifact@v4
@@ -114,24 +103,20 @@ jobs:
         path: output/pdfs/*.pdf
         retention-days: 30
     
-    # Step 10: Commit results to repository
-    - name: Commit and push results
+    - name: Commit results to repository
       run: |
         git config --local user.email "bot@github.com"
         git config --local user.name "GitHub Actions Bot"
-        
         git add output/
-        
         if git diff --staged --quiet; then
           echo "No changes to commit"
         else
           git commit -m "📰 GKToday Daily Digest: $(date +%Y-%m-%d) [Run ${{ github.run_number }}]"
           git push
-          echo "✅ Results committed to repository"
+          echo "✅ Committed"
         fi
       continue-on-error: true
     
-    # Step 11: Upload JSON data as artifact
     - name: Upload JSON artifact
       uses: actions/upload-artifact@v4
       with:
