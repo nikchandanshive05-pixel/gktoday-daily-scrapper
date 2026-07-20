@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-GKToday Daily Scraper + Quiz + PDF Generator
+GKToday Scraper v4 - Clean extraction, no duplicates, proper structure
 """
 
 import requests
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup, NavigableString, Comment
 import json
 from datetime import datetime
 import re
@@ -55,87 +55,144 @@ class GKTodayScraper:
             return []
         
         soup = BeautifulSoup(html, 'html.parser')
-        for s in soup.find_all(['script', 'style', 'nav']):
-            s.decompose()
         
-        articles = []
-        headings = soup.find_all(['h3', 'h2'])
-        logger.info("Found %d headings", len(headings))
+        # Remove ALL junk: scripts, styles, nav, ads, sidebars, comments
+        for tag in ['script', 'style', 'nav', 'header', 'footer', 'aside', 'form', 'iframe']:
+            for t in soup.find_all(tag):
+                t.decompose()
         
-        for h in headings:
-            a = self._parse_article(h)
-            if a:
-                articles.append(a)
+        for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+            comment.extract()
         
-        logger.info("Parsed %d articles", len(articles))
-        return articles
-    
-    def _parse_article(self, heading):
-        link = heading.find('a')
-        if not link:
-            return None
+        # Find main content area
+        main_content = None
+        selectors = [
+            'div.site-content',
+            'div.content-area',
+            'main',
+            'div#main',
+            'div.entry-content',
+            'article',
+        ]
         
-        title = link.get_text(strip=True)
-        url = link.get('href', '')
-        
-        if not title or len(title) < 10:
-            return None
-        
-        skip = ['gk today', 'home', 'about', 'contact', 'privacy', 'subscribe']
-        if any(s in title.lower() for s in skip):
-            return None
-        
-        if not url.startswith('http'):
-            url = self.BASE_URL + url if url.startswith('/') else self.BASE_URL + '/' + url
-        
-        img = None
-        date = ""
-        category = "General"
-        content_parts = []
-        
-        for img_cand in [heading.find_previous('img'), heading.find_next('img')]:
-            if img_cand:
-                src = img_cand.get('src') or img_cand.get('data-src', '')
-                if src and not src.startswith('data:'):
-                    img = src
-                    break
-        
-        sibling = heading.next_sibling
-        collected = 0
-        while sibling and collected < 2000:
-            if isinstance(sibling, NavigableString):
-                t = str(sibling).strip()
-                if t and len(t) > 20:
-                    content_parts.append(t)
-                    collected += len(t)
-            elif sibling.name and sibling.name not in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'script', 'style']:
-                t = sibling.get_text(strip=True)
-                if t and len(t) > 20:
-                    if re.search(r'January|February|March|April|May|June|July|August|September|October|November|December', t):
-                        date = t
-                    elif any(c in t.lower() for c in ['current affairs', 'national', 'international', 'economy', 'science', 'sports', 'defence', 'legal', 'government', 'art', 'culture', 'environment', 'persons', 'awards', 'banking', 'technology', 'agriculture', 'health', 'education']) and len(t) < 100:
-                        category = t
-                    else:
-                        content_parts.append(t)
-                        collected += len(t)
-            sibling = sibling.next_sibling if hasattr(sibling, 'next_sibling') else None
-            if not sibling:
+        for sel in selectors:
+            found = soup.select(sel)
+            if found:
+                main_content = found[0]
+                logger.info("Main content: %s", sel)
                 break
         
-        content = ' '.join(content_parts)
-        content = re.sub(r'\s+', ' ', content).strip()
+        if not main_content:
+            main_content = soup.find('body')
         
-        return {
-            'title': title,
-            'url': url,
-            'date': date,
-            'category': category,
-            'content': content[:800] if len(content) > 800 else content,
-            'key_points': self._key_points(content),
-            'image_url': img,
-            'word_count': len(content.split()),
-            'relevance': self._relevance(title + ' ' + content)
-        }
+        # Find h3 headings with links = actual articles
+        articles = []
+        seen_titles = set()
+        
+        headings = main_content.find_all(['h3', 'h2'])
+        logger.info("Found %d headings", len(headings))
+        
+        for heading in headings:
+            article = self._parse_article_clean(heading, seen_titles)
+            if article:
+                articles.append(article)
+        
+        logger.info("Parsed %d unique articles", len(articles))
+        return articles
+    
+    def _parse_article_clean(self, heading, seen_titles):
+        """Parse single article with clean extraction from parent container"""
+        try:
+            link = heading.find('a')
+            if not link:
+                return None
+            
+            title = link.get_text(strip=True)
+            url = link.get('href', '')
+            
+            if not title or len(title) < 10:
+                return None
+            
+            # Skip duplicates
+            if title in seen_titles:
+                return None
+            seen_titles.add(title)
+            
+            # Skip non-articles
+            skip = ['gk today', 'home', 'about', 'contact', 'privacy', 'subscribe', 'categories', 'tags', 'archives', 'search']
+            if any(s in title.lower() for s in skip):
+                return None
+            
+            if not url.startswith('http'):
+                url = self.BASE_URL + url if url.startswith('/') else self.BASE_URL + '/' + url
+            
+            # Find the article's parent container
+            container = heading.find_parent(['article', 'div', 'section'])
+            
+            content_text = ""
+            category = "General"
+            date_text = ""
+            
+            if container:
+                # Get text from container, excluding nested headings
+                texts = []
+                for elem in container.find_all(['p', 'div', 'span']):
+                    # Skip if inside sidebar/nav
+                    if elem.find_parent(['aside', 'nav', 'header', 'footer']):
+                        continue
+                    
+                    txt = elem.get_text(strip=True)
+                    if txt and len(txt) > 30 and txt != title:
+                        # Check category/date
+                        if len(txt) < 80 and any(c in txt.lower() for c in ['current affairs', 'national', 'international', 'economy', 'science', 'sports', 'defence', 'legal', 'government', 'art', 'culture', 'environment', 'persons', 'awards', 'banking', 'technology', 'agriculture', 'health', 'education']):
+                            category = txt
+                        elif re.search(r'\d{1,2}\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}', txt, re.IGNORECASE):
+                            date_text = txt
+                        elif txt not in texts:  # Avoid duplicates
+                            texts.append(txt)
+                
+                content_text = ' '.join(texts)
+            
+            # Fallback: siblings if no container
+            if not content_text:
+                sibling = heading.next_sibling
+                texts = []
+                while sibling:
+                    if isinstance(sibling, NavigableString):
+                        t = str(sibling).strip()
+                        if t and len(t) > 30:
+                            texts.append(t)
+                    elif sibling.name and sibling.name not in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'script', 'style']:
+                        t = sibling.get_text(strip=True)
+                        if t and len(t) > 30 and t != title and t not in texts:
+                            texts.append(t)
+                    
+                    sibling = sibling.next_sibling if hasattr(sibling, 'next_sibling') else None
+                    if len(' '.join(texts)) > 1500:
+                        break
+                
+                content_text = ' '.join(texts)
+            
+            # Clean up
+            content_text = re.sub(r'\s+', ' ', content_text).strip()
+            content_text = content_text.replace(title, '').strip()
+            
+            if len(content_text) > 1000:
+                content_text = content_text[:1000] + "..."
+            
+            return {
+                'title': title,
+                'url': url,
+                'date': date_text,
+                'category': category,
+                'content': content_text,
+                'key_points': self._key_points(content_text),
+                'relevance': self._relevance(title + ' ' + content_text)
+            }
+            
+        except Exception as e:
+            logger.warning("Error: %s", e)
+            return None
     
     def _key_points(self, text):
         if not text:
@@ -160,170 +217,113 @@ class GKTodayScraper:
         return {'level': level, 'score': ts, 'matched_keywords': matched}
     
     def scrape_quiz(self):
-        urls = [
-            self.BASE_URL + "/current-affairs-quiz",
-            self.BASE_URL + "/quiz",
-        ]
-        
-        quiz_html = None
-        for u in urls:
-            h = self.fetch(u)
-            if h and 'question' in h.lower():
-                quiz_html = h
-                logger.info("Quiz found at: %s", u)
-                break
-            time.sleep(1)
-        
-        if not quiz_html:
-            home = self.fetch(self.BASE_URL)
-            if home:
-                soup = BeautifulSoup(home, 'html.parser')
-                for a in soup.find_all('a', href=True):
-                    href = a.get('href', '').lower()
-                    txt = a.get_text(strip=True).lower()
-                    if 'quiz' in href or 'quiz' in txt:
-                        url = href if href.startswith('http') else self.BASE_URL + href if href.startswith('/') else self.BASE_URL + '/' + href
-                        h = self.fetch(url)
-                        if h and 'question' in h.lower():
-                            quiz_html = h
-                            logger.info("Quiz found via link: %s", url)
-                            break
-        
-        if not quiz_html:
-            logger.warning("No quiz found")
+        # Find quiz link on homepage
+        home_html = self.fetch(self.BASE_URL)
+        if not home_html:
             return []
         
-        questions = self._parse_quiz(quiz_html)
+        soup = BeautifulSoup(home_html, 'html.parser')
         
-        pages = self._quiz_pages(quiz_html)
-        for p in pages[:4]:
+        quiz_url = None
+        for a in soup.find_all('a', href=True):
+            href = a.get('href', '').lower()
+            text = a.get_text(strip=True).lower()
+            if 'quiz' in href or 'quiz' in text:
+                quiz_url = href if href.startswith('http') else self.BASE_URL + href if href.startswith('/') else self.BASE_URL + '/' + href
+                logger.info("Quiz link: %s", quiz_url)
+                break
+        
+        if not quiz_url:
+            logger.warning("No quiz link found")
+            return []
+        
+        # Fetch quiz
+        quiz_html = self.fetch(quiz_url)
+        if not quiz_html:
+            return []
+        
+        questions = self._parse_quiz_page(quiz_html)
+        
+        # Check pagination
+        quiz_soup = BeautifulSoup(quiz_html, 'html.parser')
+        page_links = []
+        for a in quiz_soup.find_all('a', href=True):
+            href = a.get('href', '')
+            text = a.get_text(strip=True)
+            if text.isdigit() and int(text) > 1:
+                page_url = href if href.startswith('http') else self.BASE_URL + href if href.startswith('/') else self.BASE_URL + '/' + href
+                if page_url not in page_links:
+                    page_links.append(page_url)
+        
+        logger.info("Quiz pages: %d", len(page_links) + 1)
+        
+        for page_url in page_links[:4]:
             time.sleep(1)
-            h = self.fetch(p)
-            if h:
-                pq = self._parse_quiz(h)
+            page_html = self.fetch(page_url)
+            if page_html:
+                pq = self._parse_quiz_page(page_html)
                 questions.extend(pq)
-                logger.info("Found %d questions on page: %s", len(pq), p)
+                logger.info("Page questions: %d", len(pq))
         
-        logger.info("Total quiz questions: %d", len(questions))
+        logger.info("Total quiz: %d", len(questions))
         return questions
     
-    def _quiz_pages(self, html):
+    def _parse_quiz_page(self, html):
         soup = BeautifulSoup(html, 'html.parser')
-        pages = []
-        for a in soup.find_all('a', href=True):
-            href = a.get('href', '')
-            txt = a.get_text(strip=True)
-            if txt.isdigit() and int(txt) > 1 and 'quiz' in href.lower():
-                url = href if href.startswith('http') else self.BASE_URL + href if href.startswith('/') else self.BASE_URL + '/' + href
-                if url not in pages:
-                    pages.append(url)
-        return pages
-    
-    def _parse_quiz(self, html):
-        soup = BeautifulSoup(html, 'html.parser')
-        for s in soup.find_all(['script', 'style']):
-            s.decompose()
+        for tag in ['script', 'style', 'nav', 'header', 'footer']:
+            for t in soup.find_all(tag):
+                t.decompose()
         
         questions = []
         text = soup.get_text()
         
-        pattern = re.compile(r'Q\.?\s*(\d+)\s*[\.:]?\s*(.*?)(?=[a-d]\)|[A-D]\))', re.DOTALL | re.IGNORECASE)
-        matches = pattern.findall(text)
+        # Split by question numbers
+        q_blocks = re.split(r'(Q\.?\s*\d+\s*[\.:]?)', text, flags=re.IGNORECASE)
         
-        if not matches:
-            pattern = re.compile(r'Question\s*(\d+)\s*[\.:]?\s*(.*?)(?=[a-d]\)|[A-D]\))', re.DOTALL | re.IGNORECASE)
-            matches = pattern.findall(text)
-        
-        for m in matches:
-            q_num = int(m[0]) if m[0].isdigit() else 0
-            q_text = m[1].strip()
-            
-            full_q = 'Q' + m[0] + '. ' + q_text
-            opts = self._extract_options(text, full_q)
-            ans = self._extract_answer(text, full_q)
-            exp = self._extract_explanation(text, full_q)
-            
-            if q_text and len(q_text) > 20:
-                questions.append({
-                    'number': q_num,
-                    'question': q_text[:300],
-                    'options': opts,
-                    'answer': ans,
-                    'explanation': exp
-                })
-        
-        if not questions:
-            containers = soup.find_all(['div', 'article'], class_=re.compile(r'quiz|question', re.I))
-            if not containers:
-                containers = soup.find_all(['div', 'p'])
-            
-            for c in containers:
-                q = self._parse_quiz_container(c)
-                if q:
-                    questions.append(q)
+        if len(q_blocks) > 1:
+            for i in range(1, len(q_blocks), 2):
+                if i + 1 < len(q_blocks):
+                    q_num_match = re.search(r'\d+', q_blocks[i])
+                    q_num = int(q_num_match.group()) if q_num_match else 0
+                    q_block = q_blocks[i] + q_blocks[i + 1]
+                    
+                    q = self._parse_quiz_block(q_num, q_block)
+                    if q:
+                        questions.append(q)
         
         return questions
     
-    def _extract_options(self, text, question_marker):
-        opts = []
-        idx = text.find(question_marker)
-        if idx < 0:
-            return opts
+    def _parse_quiz_block(self, q_num, block):
+        # Extract question text
+        q_match = re.search(r'Q\.?\s*\d+\s*[\.:]?\s*(.*?)(?=[a-d]\)|[A-D]\)|Answer|Explanation|$)', block, re.DOTALL | re.IGNORECASE)
+        q_text = q_match.group(1).strip() if q_match else ""
         
-        segment = text[idx:idx + 1500]
-        for letter in ['a', 'b', 'c', 'd']:
-            pattern = re.compile(r'[\n\r\s]' + letter + r'[\)\.\s]\s*(.*?)(?=[\n\r\s][b-d][\)\.\s]|[\n\r\s]Answer|[\n\r\s]Explanation|$)', re.DOTALL | re.IGNORECASE)
-            match = pattern.search(segment)
-            if match:
-                opts.append(match.group(1).strip()[:200])
-        return opts
-    
-    def _extract_answer(self, text, question_marker):
-        idx = text.find(question_marker)
-        if idx < 0:
-            return ''
-        segment = text[idx:idx + 1500]
-        match = re.search(r'Answer[\s:\.]+([a-dA-D])', segment, re.IGNORECASE)
-        return match.group(1).upper() if match else ''
-    
-    def _extract_explanation(self, text, question_marker):
-        idx = text.find(question_marker)
-        if idx < 0:
-            return ''
-        segment = text[idx:idx + 2000]
-        match = re.search(r'Explanation[\s:\.]+(.*?)(?=Q\.?\s*\d+|Question\s*\d+|$)', segment, re.DOTALL | re.IGNORECASE)
-        return match.group(1).strip()[:500] if match else ''
-    
-    def _parse_quiz_container(self, container):
-        text = container.get_text(separator='\n', strip=True)
-        q_match = re.search(r'Q\.?\s*(\d+)|Question\s*(\d+)', text, re.IGNORECASE)
-        if not q_match:
+        if not q_text or len(q_text) < 20:
             return None
         
-        q_num = int(q_match.group(1) or q_match.group(2))
-        lines = text.split('\n')
-        q_text = ''
-        opts = []
-        ans = ''
-        exp = ''
+        # Extract options
+        options = []
+        for letter in ['a', 'b', 'c', 'd']:
+            pattern = re.compile(r'[\n\r\s]' + letter + r'[\)\.\s]\s*(.*?)(?=[\n\r\s][b-d][\)\.\s]|[\n\r\s]Answer|[\n\r\s]Explanation|$)', re.DOTALL | re.IGNORECASE)
+            match = pattern.search(block)
+            if match:
+                options.append(match.group(1).strip()[:200])
         
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            if re.match(r'Q\.?\s*\d+|Question\s*\d+', line, re.IGNORECASE):
-                q_text = re.sub(r'Q\.?\s*\d+\s*[\.:]?\s*', '', line, flags=re.IGNORECASE)
-            elif re.match(r'[a-d]\)|[A-D]\)', line):
-                opts.append(re.sub(r'^[a-d]\)|[A-D]\)\s*', '', line)[:200])
-            elif re.match(r'Answer', line, re.IGNORECASE):
-                ans_match = re.search(r'Answer[\s:\.]+([a-dA-D])', line, re.IGNORECASE)
-                ans = ans_match.group(1).upper() if ans_match else ''
-            elif re.match(r'Explanation', line, re.IGNORECASE):
-                exp = re.sub(r'^Explanation[\s:\.]+', '', line, flags=re.IGNORECASE)[:500]
+        # Extract answer
+        ans_match = re.search(r'Answer[\s:\.]+([a-dA-D])', block, re.IGNORECASE)
+        answer = ans_match.group(1).upper() if ans_match else ''
         
-        if q_text and len(q_text) > 20:
-            return {'number': q_num, 'question': q_text[:300], 'options': opts, 'answer': ans, 'explanation': exp}
-        return None
+        # Extract explanation
+        exp_match = re.search(r'Explanation[\s:\.]+(.*?)(?=Q\.?\s*\d+|Question\s*\d+|$)', block, re.DOTALL | re.IGNORECASE)
+        explanation = exp_match.group(1).strip()[:500] if exp_match else ''
+        
+        return {
+            'number': q_num,
+            'question': q_text[:300],
+            'options': options,
+            'answer': answer,
+            'explanation': explanation
+        }
     
     def scrape_all(self):
         articles = self.scrape_articles()
@@ -361,54 +361,53 @@ class PDFGenerator:
     def _make_styles(self):
         s = getSampleStyleSheet()
         
-        # UNIQUE names with GK prefix - no collisions with built-in styles
         s.add(ParagraphStyle('GKTitle', parent=s['Heading1'], fontSize=24, leading=30,
-            textColor=HexColor('#1a5276'), alignment=TA_CENTER, spaceAfter=8, fontName='Helvetica-Bold'))
+            textColor=HexColor('#1a5276'), alignment=TA_CENTER, spaceAfter=6, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('GKSub', parent=s['Normal'], fontSize=11, leading=14,
-            textColor=HexColor('#7f8c8d'), alignment=TA_CENTER, spaceAfter=18, fontName='Helvetica'))
+        s.add(ParagraphStyle('GKSub', parent=s['Normal'], fontSize=10, leading=13,
+            textColor=HexColor('#7f8c8d'), alignment=TA_CENTER, spaceAfter=16, fontName='Helvetica'))
         
-        s.add(ParagraphStyle('GKSecHead', parent=s['Heading2'], fontSize=13, leading=17,
-            textColor=HexColor('#1a5276'), spaceBefore=14, spaceAfter=6, fontName='Helvetica-Bold'))
+        s.add(ParagraphStyle('GKSecHead', parent=s['Heading2'], fontSize=12, leading=16,
+            textColor=HexColor('#1a5276'), spaceBefore=12, spaceAfter=4, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('GKArtTitle', parent=s['Heading3'], fontSize=10, leading=14,
-            textColor=HexColor('#2874a6'), spaceBefore=8, spaceAfter=3, fontName='Helvetica-Bold'))
+        s.add(ParagraphStyle('GKArtTitle', parent=s['Heading3'], fontSize=9, leading=12,
+            textColor=HexColor('#2874a6'), spaceBefore=6, spaceAfter=2, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('GKContent', parent=s['Normal'], fontSize=8, leading=12,
-            textColor=HexColor('#2c3e50'), alignment=TA_JUSTIFY, spaceAfter=4, fontName='Helvetica'))
+        s.add(ParagraphStyle('GKContent', parent=s['Normal'], fontSize=7, leading=10,
+            textColor=HexColor('#2c3e50'), alignment=TA_JUSTIFY, spaceAfter=3, fontName='Helvetica'))
         
-        s.add(ParagraphStyle('GKKeyPt', parent=s['Normal'], fontSize=7, leading=11,
-            textColor=HexColor('#2c3e50'), leftIndent=12, spaceAfter=2, fontName='Helvetica'))
+        s.add(ParagraphStyle('GKKeyPt', parent=s['Normal'], fontSize=6, leading=9,
+            textColor=HexColor('#2c3e50'), leftIndent=10, spaceAfter=1, fontName='Helvetica'))
         
-        s.add(ParagraphStyle('GKBadgeH', parent=s['Normal'], fontSize=6, leading=8,
+        s.add(ParagraphStyle('GKBadgeH', parent=s['Normal'], fontSize=5, leading=7,
             textColor=colors.white, backColor=HexColor('#e74c3c'), alignment=TA_CENTER,
-            spaceAfter=2, fontName='Helvetica-Bold'))
+            spaceAfter=1, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('GKBadgeM', parent=s['Normal'], fontSize=6, leading=8,
+        s.add(ParagraphStyle('GKBadgeM', parent=s['Normal'], fontSize=5, leading=7,
             textColor=colors.white, backColor=HexColor('#f39c12'), alignment=TA_CENTER,
-            spaceAfter=2, fontName='Helvetica-Bold'))
+            spaceAfter=1, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('GKBadgeL', parent=s['Normal'], fontSize=6, leading=8,
+        s.add(ParagraphStyle('GKBadgeL', parent=s['Normal'], fontSize=5, leading=7,
             textColor=colors.white, backColor=HexColor('#95a5a6'), alignment=TA_CENTER,
-            spaceAfter=2, fontName='Helvetica-Bold'))
+            spaceAfter=1, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('GKQuizHead', parent=s['Heading2'], fontSize=15, leading=19,
-            textColor=HexColor('#1a5276'), spaceBefore=16, spaceAfter=10, alignment=TA_CENTER,
+        s.add(ParagraphStyle('GKQuizHead', parent=s['Heading2'], fontSize=13, leading=17,
+            textColor=HexColor('#1a5276'), spaceBefore=12, spaceAfter=8, alignment=TA_CENTER,
             fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('GKQText', parent=s['Normal'], fontSize=9, leading=13,
-            textColor=HexColor('#2c3e50'), spaceBefore=10, spaceAfter=4, fontName='Helvetica-Bold'))
+        s.add(ParagraphStyle('GKQText', parent=s['Normal'], fontSize=8, leading=11,
+            textColor=HexColor('#2c3e50'), spaceBefore=8, spaceAfter=3, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('GKQOpt', parent=s['Normal'], fontSize=8, leading=12,
-            textColor=HexColor('#2c3e50'), leftIndent=15, spaceAfter=1, fontName='Helvetica'))
+        s.add(ParagraphStyle('GKQOpt', parent=s['Normal'], fontSize=7, leading=10,
+            textColor=HexColor('#2c3e50'), leftIndent=12, spaceAfter=1, fontName='Helvetica'))
         
-        s.add(ParagraphStyle('GKQAns', parent=s['Normal'], fontSize=8, leading=12,
-            textColor=HexColor('#27ae60'), leftIndent=15, spaceAfter=4, fontName='Helvetica-Bold'))
+        s.add(ParagraphStyle('GKQAns', parent=s['Normal'], fontSize=7, leading=10,
+            textColor=HexColor('#27ae60'), leftIndent=12, spaceAfter=3, fontName='Helvetica-Bold'))
         
-        s.add(ParagraphStyle('GKQExp', parent=s['Normal'], fontSize=7, leading=11,
-            textColor=HexColor('#7f8c8d'), leftIndent=15, spaceAfter=8, fontName='Helvetica-Oblique'))
+        s.add(ParagraphStyle('GKQExp', parent=s['Normal'], fontSize=6, leading=9,
+            textColor=HexColor('#7f8c8d'), leftIndent=12, spaceAfter=6, fontName='Helvetica-Oblique'))
         
-        s.add(ParagraphStyle('GKFoot', parent=s['Normal'], fontSize=6, leading=9,
+        s.add(ParagraphStyle('GKFoot', parent=s['Normal'], fontSize=5, leading=8,
             textColor=HexColor('#7f8c8d'), alignment=TA_CENTER, fontName='Helvetica'))
         
         return s
@@ -429,12 +428,12 @@ class PDFGenerator:
             path = os.path.join(self.output_dir, "GKToday_" + data['date'] + ".pdf")
         
         doc = SimpleDocTemplate(path, pagesize=A4,
-            rightMargin=12*mm, leftMargin=12*mm, topMargin=14*mm, bottomMargin=14*mm)
+            rightMargin=10*mm, leftMargin=10*mm, topMargin=12*mm, bottomMargin=12*mm)
         
         story = []
         story.extend(self._header(data))
         story.extend(self._summary(data))
-        story.append(Spacer(1, 12))
+        story.append(Spacer(1, 10))
         
         for sec in data.get('sections', []):
             story.extend(self._section(sec))
@@ -451,15 +450,15 @@ class PDFGenerator:
     
     def _header(self, data):
         els = []
-        els.append(Paragraph("<b>GK TODAY</b><br/><font size=12>Current Affairs Daily Digest</font>", self.styles['GKTitle']))
+        els.append(Paragraph("<b>GK TODAY</b><br/><font size=10>Current Affairs Daily Digest</font>", self.styles['GKTitle']))
         qc = data.get('quiz', {}).get('total_questions', 0)
         els.append(Paragraph("%s | %d Articles | %d Quiz Questions | Source: GKToday.in" % (data.get('display_date', data['date']), data['total_articles'], qc), self.styles['GKSub']))
-        els.append(Spacer(1, 6))
+        els.append(Spacer(1, 4))
         
-        line = Table([['']], colWidths=[186*mm])
-        line.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,0), 2, HexColor('#1a5276'))]))
+        line = Table([['']], colWidths=[190*mm])
+        line.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,0), 1.5, HexColor('#1a5276'))]))
         els.append(line)
-        els.append(Spacer(1, 10))
+        els.append(Spacer(1, 8))
         return els
     
     def _summary(self, data):
@@ -472,32 +471,32 @@ class PDFGenerator:
         tbl = Table([
             ['EXAM RELEVANCE SUMMARY', '', '', ''],
             ['', '', '', ''],
-            ['HIGH Priority', str(h), 'MEDIUM Priority', str(m)],
-            ['LOW Priority', str(l), 'Total Articles', str(data['total_articles'])],
-            ['Quiz Questions', str(qc), 'Source', 'GKToday.in'],
-        ], colWidths=[47*mm, 22*mm, 47*mm, 22*mm])
+            ['HIGH', str(h), 'MEDIUM', str(m)],
+            ['LOW', str(l), 'Articles', str(data['total_articles'])],
+            ['Quiz', str(qc), 'Source', 'GKToday.in'],
+        ], colWidths=[48*mm, 22*mm, 48*mm, 22*mm])
         
         tbl.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), HexColor('#1a5276')),
             ('TEXTCOLOR', (0,0), (-1,0), colors.white),
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0,0), (-1,0), 9),
+            ('FONTSIZE', (0,0), (-1,0), 8),
             ('ALIGN', (0,0), (-1,0), 'CENTER'),
             ('SPAN', (0,0), (-1,0)),
-            ('TOPPADDING', (0,0), (-1,0), 5),
-            ('BOTTOMPADDING', (0,0), (-1,0), 5),
+            ('TOPPADDING', (0,0), (-1,0), 4),
+            ('BOTTOMPADDING', (0,0), (-1,0), 4),
             ('BACKGROUND', (0,2), (-1,-1), HexColor('#f8f9fa')),
             ('TEXTCOLOR', (0,2), (-1,-1), HexColor('#2c3e50')),
             ('FONTNAME', (0,2), (-1,-1), 'Helvetica'),
-            ('FONTSIZE', (0,2), (-1,-1), 7),
+            ('FONTSIZE', (0,2), (-1,-1), 6),
             ('ALIGN', (0,2), (0,-1), 'LEFT'),
             ('ALIGN', (1,2), (1,-1), 'CENTER'),
             ('ALIGN', (2,2), (2,-1), 'LEFT'),
             ('ALIGN', (3,2), (3,-1), 'CENTER'),
-            ('TOPPADDING', (0,2), (-1,-1), 4),
-            ('BOTTOMPADDING', (0,2), (-1,-1), 4),
-            ('LEFTPADDING', (0,2), (-1,-1), 5),
-            ('RIGHTPADDING', (0,2), (-1,-1), 5),
+            ('TOPPADDING', (0,2), (-1,-1), 3),
+            ('BOTTOMPADDING', (0,2), (-1,-1), 3),
+            ('LEFTPADDING', (0,2), (-1,-1), 4),
+            ('RIGHTPADDING', (0,2), (-1,-1), 4),
             ('GRID', (0,1), (-1,-1), 0.5, HexColor('#bdc3c7')),
             ('BOX', (0,0), (-1,-1), 1, HexColor('#1a5276')),
         ]))
@@ -508,7 +507,7 @@ class PDFGenerator:
     def _section(self, sec):
         els = []
         els.append(Paragraph("%s (%d articles)" % (sec['title'], sec['article_count']), self.styles['GKSecHead']))
-        els.append(Spacer(1, 4))
+        els.append(Spacer(1, 2))
         
         for art in sec.get('articles', []):
             rel = art.get('relevance', {})
@@ -530,30 +529,28 @@ class PDFGenerator:
                     els.append(Paragraph("- %s" % self._clean(kp), self.styles['GKKeyPt']))
             
             c = art.get('content', '')
-            if len(c) > 350:
-                c = c[:350] + "..."
             if c:
                 els.append(Paragraph(self._clean(c), self.styles['GKContent']))
             
             kws = rel.get('matched_keywords', [])
             if kws:
-                tag_style = ParagraphStyle('tag', parent=self.styles['GKContent'], fontSize=5, textColor=HexColor('#7f8c8d'), spaceAfter=6)
+                tag_style = ParagraphStyle('tag', parent=self.styles['GKContent'], fontSize=4, textColor=HexColor('#7f8c8d'), spaceAfter=4)
                 els.append(Paragraph("<i>Tags: %s</i>" % ', '.join(kws), tag_style))
             
-            els.append(Spacer(1, 3))
-            sep = Table([['']], colWidths=[186*mm])
+            els.append(Spacer(1, 2))
+            sep = Table([['']], colWidths=[190*mm])
             sep.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,0), 0.5, HexColor('#bdc3c7'))]))
             els.append(sep)
-            els.append(Spacer(1, 3))
+            els.append(Spacer(1, 2))
         
-        els.append(Spacer(1, 8))
+        els.append(Spacer(1, 6))
         return els
     
     def _quiz(self, quiz_data):
         els = []
         els.append(PageBreak())
-        els.append(Paragraph("<b>DAILY CURRENT AFFAIRS QUIZ</b><br/><font size=11>%d Questions</font>" % quiz_data['total_questions'], self.styles['GKQuizHead']))
-        els.append(Spacer(1, 8))
+        els.append(Paragraph("<b>DAILY CURRENT AFFAIRS QUIZ</b><br/><font size=9>%d Questions</font>" % quiz_data['total_questions'], self.styles['GKQuizHead']))
+        els.append(Spacer(1, 6))
         
         for q in quiz_data.get('questions', []):
             qn = q.get('number', 0)
@@ -575,29 +572,29 @@ class PDFGenerator:
             if exp:
                 els.append(Paragraph(self._clean(exp), self.styles['GKQExp']))
             
-            els.append(Spacer(1, 6))
+            els.append(Spacer(1, 4))
         
         return els
     
     def _footer(self):
         els = []
-        els.append(Spacer(1, 12))
+        els.append(Spacer(1, 10))
         els.append(Paragraph("Generated on %s | Source: GKToday.in | For exam preparation only" % datetime.now().strftime('%B %d, %Y'), self.styles['GKFoot']))
         return els
     
     def _page_dec(self, canvas, doc):
         canvas.saveState()
         pn = canvas.getPageNumber()
-        canvas.setFont('Helvetica', 6)
+        canvas.setFont('Helvetica', 5)
         canvas.setFillColor(HexColor('#7f8c8d'))
-        canvas.drawRightString(195*mm, 10*mm, "Page %d" % pn)
+        canvas.drawRightString(197*mm, 8*mm, "Page %d" % pn)
         if pn > 1:
             canvas.setStrokeColor(HexColor('#1a5276'))
             canvas.setLineWidth(0.5)
-            canvas.line(12*mm, 280*mm, 198*mm, 280*mm)
-            canvas.setFont('Helvetica-Bold', 6)
+            canvas.line(10*mm, 282*mm, 200*mm, 282*mm)
+            canvas.setFont('Helvetica-Bold', 5)
             canvas.setFillColor(HexColor('#1a5276'))
-            canvas.drawString(12*mm, 282*mm, "GKToday Daily Digest")
+            canvas.drawString(10*mm, 284*mm, "GKToday Daily Digest")
         canvas.restoreState()
 
 
