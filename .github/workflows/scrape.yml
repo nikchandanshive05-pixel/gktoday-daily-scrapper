@@ -1,37 +1,45 @@
+STREAMING_CHUNK:Configuring workflow triggers...
+
 name: GKToday Daily Scraper
 
-# Define when the workflow should run
 on:
-  schedule:
-    # GitHub Actions servers use UTC (Coordinated Universal Time).
-    # IST is UTC + 5:30. To run at 6:00 AM IST, we set the cron to 00:30 UTC.
-    # Format: minute hour day month day-of-week
-    - cron: '30 0 * * *' 
-  workflow_dispatch: # This line adds a "Run workflow" button in the GitHub UI for manual testing
+schedule:
+# Runs at 00:30 UTC every day, which translates exactly to 6:00 AM IST.
+- cron: '30 0 * * *'
+
+Adds a "Run workflow" button in the GitHub UI so you can trigger it manually anytime.
+
+workflow_dispatch:
+
+STREAMING_CHUNK:Setting up the virtual server environment...
 
 jobs:
-  scrape-and-deliver:
-    runs-on: ubuntu-latest # Allocates a temporary Linux server
+scrape-and-deliver:
+runs-on: ubuntu-latest # Allocates a free, temporary Linux server
 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        # This step downloads your python script from your repository onto the temporary server
+steps:
+  # STREAMING_CHUNK:Downloading repository files...
+  - name: Checkout Repository
+    uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+  # STREAMING_CHUNK:Installing Python runtime...
+  - name: Set up Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: '3.10'
 
-      - name: Install Required Libraries
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 reportlab
+  # STREAMING_CHUNK:Installing dependencies...
+  - name: Install Required Libraries
+    run: |
+      python -m pip install --upgrade pip
+      pip install requests beautifulsoup4 reportlab
 
-      - name: Execute Scraper Script
-        # We pass the secrets securely as Environment Variables
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          python gktoday_scraper_v7.py
+  # STREAMING_CHUNK:Executing the scraper with secure credentials...
+  - name: Execute Scraper Script
+    # Safely injects your GitHub Secrets into the server environment
+    env:
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    run: |
+      # Make sure this matches the exact name of your Python file in the repository
+      python gktoday_final_scraper.py
