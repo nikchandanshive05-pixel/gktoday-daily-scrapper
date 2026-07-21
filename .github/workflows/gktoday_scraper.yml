@@ -28,4 +28,4 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python gktoday_scraper_v7.py
+          python gktoday_scraper_v9_production.py
