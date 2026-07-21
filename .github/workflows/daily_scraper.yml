@@ -1,125 +1,37 @@
-name: Daily GKToday Scraper + Quiz + Telegram Delivery
+name: GKToday Daily Scraper
 
+# Define when the workflow should run
 on:
   schedule:
-    - cron: '0 8 * * *'
-  workflow_dispatch:
+    # GitHub Actions servers use UTC (Coordinated Universal Time).
+    # IST is UTC + 5:30. To run at 6:00 AM IST, we set the cron to 00:30 UTC.
+    # Format: minute hour day month day-of-week
+    - cron: '30 0 * * *' 
+  workflow_dispatch: # This line adds a "Run workflow" button in the GitHub UI for manual testing
 
 jobs:
   scrape-and-deliver:
-    runs-on: ubuntu-latest
-    
+    runs-on: ubuntu-latest # Allocates a temporary Linux server
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-    
-    - name: Install Python dependencies
-      run: |
-        pip install beautifulsoup4==4.12.3
-        pip install requests==2.31.0
-        pip install lxml==5.1.0
-        pip install reportlab==4.0.9
-        pip install Pillow==10.2.0
-    
-    - name: Create output directories
-      run: |
-        mkdir -p output/json
-        mkdir -p output/pdfs
-    
-    - name: Scrape GKToday articles and quiz
-      run: |
-        python gktoday_scraper.py --daily --output output --telegram "${{ secrets.TELEGRAM_BOT_TOKEN }}" --chat-id "${{ secrets.TELEGRAM_CHAT_ID }}"
-      continue-on-error: true
-    
-    - name: Check PDF output
-      id: check_pdf
-      run: |
-        PDF_FILE=$(ls -t output/pdfs/*.pdf 2>/dev/null | head -1)
-        if [ -n "$PDF_FILE" ]; then
-          echo "pdf_found=true" >> $GITHUB_OUTPUT
-          echo "pdf_path=$PDF_FILE" >> $GITHUB_OUTPUT
-          echo "pdf_name=$(basename $PDF_FILE)" >> $GITHUB_OUTPUT
-          echo "✅ PDF found: $PDF_FILE"
-          ls -lh $PDF_FILE
-        else
-          echo "pdf_found=false" >> $GITHUB_OUTPUT
-          echo "❌ No PDF generated"
-          ls -la output/ || true
-          ls -la output/pdfs/ || true
-        fi
-    
-    - name: Send PDF to Telegram (fallback)
-      if: steps.check_pdf.outputs.pdf_found == 'true'
-      env:
-        BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        PDF_PATH: ${{ steps.check_pdf.outputs.pdf_path }}
-        PDF_NAME: ${{ steps.check_pdf.outputs.pdf_name }}
-      run: |
-        echo "📤 Sending PDF to Telegram..."
-        
-        curl -s -X POST \
-          "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-          -d "chat_id=${CHAT_ID}" \
-          -d "parse_mode=HTML" \
-          -d "text=📰 <b>GKToday Daily Digest</b>%0A%0A📅 Date: $(date +%Y-%m-%d)%0A📄 PDF: ${PDF_NAME}%0A%0A✅ Articles + Quiz scraped from GKToday.in" \
-          > /dev/null
-        
-        curl -s -X POST \
-          "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
-          -F "chat_id=${CHAT_ID}" \
-          -F "document=@${PDF_PATH}" \
-          -F "caption=📰 GKToday Daily Digest - $(date +%Y-%m-%d) | Articles + Quiz" \
-          -F "parse_mode=HTML" \
-          > /dev/null
-        
-        echo "✅ PDF sent to Telegram!"
-    
-    - name: Send failure notification
-      if: steps.check_pdf.outputs.pdf_found == 'false'
-      env:
-        BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: |
-        curl -s -X POST \
-          "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-          -d "chat_id=${CHAT_ID}" \
-          -d "parse_mode=HTML" \
-          -d "text=⚠️ <b>GKToday Scraper Alert</b>%0A%0A❌ PDF generation failed for $(date +%Y-%m-%d)%0A%0A🔧 Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-          > /dev/null
-        
-        echo "⚠️ Failure notification sent"
-    
-    - name: Upload PDF artifact
-      if: steps.check_pdf.outputs.pdf_found == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: gktoday-pdf-${{ github.run_date }}
-        path: output/pdfs/*.pdf
-        retention-days: 30
-    
-    - name: Commit results to repository
-      run: |
-        git config --local user.email "bot@github.com"
-        git config --local user.name "GitHub Actions Bot"
-        git add output/
-        if git diff --staged --quiet; then
-          echo "No changes to commit"
-        else
-          git commit -m "📰 GKToday Daily Digest: $(date +%Y-%m-%d) [Run ${{ github.run_number }}]"
-          git push
-          echo "✅ Committed"
-        fi
-      continue-on-error: true
-    
-    - name: Upload JSON artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: gktoday-json-${{ github.run_date }}
-        path: output/json/*.json
-        retention-days: 90
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        # This step downloads your python script from your repository onto the temporary server
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Required Libraries
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 reportlab
+
+      - name: Execute Scraper Script
+        # We pass the secrets securely as Environment Variables
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python gktoday_scraper_v7.py
