@@ -2,7 +2,7 @@ name: GKToday Daily Scraper
 
 on:
   schedule:
-    - cron: '30 0 * * *'  # 6:00 AM IST
+    - cron: '30 0 * * *'
   workflow_dispatch:
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
 
       - name: Execute Scraper Script
         env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python gktoday_scraper_v7.py
