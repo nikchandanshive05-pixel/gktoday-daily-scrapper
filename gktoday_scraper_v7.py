@@ -651,7 +651,7 @@ if __name__ == '__main__':
 '''
 
 # Save the complete script
-output_path = '/mnt/agents/output/gktoday_scraper_v9_production.py'
+output_path = '/mnt/agents/output/gktoday_scraper_v7.py'
 with open(output_path, 'w') as f:
     f.write(final_script)
 
