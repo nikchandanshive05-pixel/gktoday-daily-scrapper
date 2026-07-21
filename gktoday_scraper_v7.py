@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-GKToday Scraper v7 (Final Edition) - Time-Aware Deep Scraper
+GKToday Scraper v7 (Final Cloud Edition)
 Features: Full Article Extraction, Date Filtering (Last 48 Hours), 
 UPSC Relevance Scoring, PDF Generation, and Telegram Delivery.
+Cloud-Ready: Automatically reads credentials from environment variables.
 """
 
 import requests
-from bs4 import BeautifulSoup, Comment
+from bs4 import BeautifulSoup
 import json
 from datetime import datetime, timedelta, timezone
 import re
@@ -23,7 +24,11 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.lib.colors import HexColor
 
 import logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler(sys.stdout)])
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s', 
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 logger = logging.getLogger(__name__)
 
 class GKTodayScraper:
@@ -31,9 +36,11 @@ class GKTodayScraper:
     
     def __init__(self, max_days_old=2):
         self.session = requests.Session()
-        self.session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
         
-        # Set Timezone to IST (UTC + 5:30)
+        # Set Timezone to IST (UTC + 5:30) to accurately filter dates
         ist_offset = timezone(timedelta(hours=5, minutes=30))
         self.today = datetime.now(ist_offset).date()
         self.cutoff_date = self.today - timedelta(days=max_days_old)
@@ -69,24 +76,24 @@ class GKTodayScraper:
             if any(s in title.lower() for s in ['gk today', 'home', 'about', 'contact', 'quiz', 'archives']): continue
             
             seen_titles.add(title)
-            if not url.startswith('http'): url = self.BASE_URL + url
+            if not url.startswith('http'): 
+                url = self.BASE_URL + url
             article_links.append({'title': title, 'url': url})
 
         full_articles = []
         for i, link_data in enumerate(article_links):
             logger.info(f"Deep Scraping [{i+1}/{len(article_links)}]: {link_data['title']}")
-            time.sleep(1) # Ethical scraping delay
+            time.sleep(1) # Ethical scraping delay to prevent server overload
             
             article_html = self.fetch(link_data['url'])
             if not article_html: continue
                 
             parsed_data = self._parse_full_article_page(article_html, link_data['title'], link_data['url'])
             if parsed_data:
-                # Chronological Filtering Logic
                 if parsed_data['parsed_date'] and parsed_data['parsed_date'] >= self.cutoff_date:
                     full_articles.append(parsed_data)
                 elif not parsed_data['parsed_date']:
-                    # Keep if date parsing failed just in case
+                    # Keep if date parsing failed just in case we miss valid news
                     full_articles.append(parsed_data)
                 else:
                     logger.info(f"Skipping outdated article: {parsed_data['date_str']}")
@@ -96,7 +103,7 @@ class GKTodayScraper:
     def _parse_full_article_page(self, html, title, url):
         soup = BeautifulSoup(html, 'html.parser')
         
-        # Clean impurities
+        # Clean impurities (ads, scripts, nav bars)
         for tag in ['script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe']:
             for t in soup.find_all(tag): t.decompose()
             
@@ -106,7 +113,6 @@ class GKTodayScraper:
         paragraphs = main_content.find_all(['p', 'ul', 'h4'])
         texts = []
         
-        # Date Extraction
         date_str = ""
         parsed_date = None
         meta_div = soup.find('div', class_='entry-meta')
@@ -127,7 +133,7 @@ class GKTodayScraper:
                 texts.append(txt)
                     
         full_content = '\n\n'.join(texts).strip()
-        full_content = re.sub(r'\n{3,}', '\n\n', full_content)
+        full_content = re.sub(r'\n{3,}', '\n\n', full_content) # Clean excessive newlines
         
         if not full_content: return None
         
@@ -169,7 +175,8 @@ class GKTodayScraper:
     def scrape_all(self):
         articles = self.scrape_articles()
         sections = {}
-        for a in articles: sections.setdefault(a.get('category', 'General'), []).append(a)
+        for a in articles: 
+            sections.setdefault(a.get('category', 'General'), []).append(a)
         
         section_list = [{'title': cat, 'articles': arts, 'article_count': len(arts)} for cat, arts in sections.items()]
         section_list.sort(key=lambda x: x['article_count'], reverse=True)
@@ -227,7 +234,9 @@ class Pipeline:
     def __init__(self, output_dir='output', telegram_token=None, telegram_chat_id=None):
         self.scraper = GKTodayScraper(max_days_old=2) # Only gets news from today and yesterday
         self.generator = PDFGenerator(os.path.join(output_dir, 'pdfs'))
-        self.output_dir, self.tg_token, self.tg_chat = output_dir, telegram_token, telegram_chat_id
+        self.output_dir = output_dir
+        self.tg_token = telegram_token
+        self.tg_chat = telegram_chat_id
     
     def run(self):
         data = self.scraper.scrape_all()
@@ -239,6 +248,8 @@ class Pipeline:
         
         if self.tg_token and self.tg_chat:
             self._telegram(data, ppath)
+        else:
+            logger.info("Telegram credentials not provided. PDF saved locally only.")
         return ppath
     
     def _telegram(self, data, pdf_path):
@@ -253,6 +264,10 @@ class Pipeline:
             logger.error(f"Telegram failed: {e}")
 
 if __name__ == '__main__':
-    # Replace with your actual bot token and chat ID if you wish to use the Telegram feature
-    p = Pipeline(telegram_token=None, telegram_chat_id=None)
+    # Securely fetch credentials from the system/server environment.
+    # If running locally without setting these, it simply defaults to None and skips Telegram.
+    bot_token = os.environ.get("TELEGRAM_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    
+    p = Pipeline(telegram_token=bot_token, telegram_chat_id=chat_id)
     p.run()
