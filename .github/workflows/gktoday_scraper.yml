@@ -2,9 +2,8 @@ name: GKToday Daily Scraper
 
 on:
   schedule:
-    # Runs at 00:30 UTC every day = 6:00 AM IST
-    - cron: '30 0 * * *'
-  workflow_dispatch:  # Manual trigger button
+    - cron: '30 0 * * *'  # 6:00 AM IST
+  workflow_dispatch:
 
 jobs:
   scrape-and-deliver:
