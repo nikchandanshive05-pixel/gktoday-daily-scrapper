@@ -55,7 +55,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ==================== ENVIRONMENT ====================
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 MAX_DAYS_OLD = int(os.environ.get("MAX_DAYS_OLD", "2"))
 QUIZ_MODE = os.environ.get("QUIZ_MODE", "combined").strip().lower()  # combined | separate | both
