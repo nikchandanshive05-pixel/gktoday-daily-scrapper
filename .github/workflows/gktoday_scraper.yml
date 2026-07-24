@@ -1,31 +1,67 @@
-name: GKToday Daily Scraper
+name: GKToday Scraper v10
 
 on:
   schedule:
-    - cron: '30 0 * * *'
+    - cron: "30 0 * * *"   # 6:00 AM IST daily
   workflow_dispatch:
+    inputs:
+      max_days_old:
+        description: "Days back to scrape"
+        required: false
+        default: "2"
+      quiz_mode:
+        description: "PDF mode: combined / separate / both"
+        required: false
+        default: "combined"
+      hide_answers:
+        description: "Hide answers in quiz PDF? (true/false)"
+        required: false
+        default: "false"
+
+env:
+  PYTHON_VERSION: "3.11"
 
 jobs:
   scrape-and-deliver:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
 
-      - name: Install Required Libraries
+      - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 reportlab
+          pip install -r requirements.txt
 
-      - name: Execute Scraper Script
+      - name: Cache processed history
+        uses: actions/cache@v4
+        with:
+          path: output/processed.json
+          key: gktoday-processed-${{ github.run_id }}
+          restore-keys: gktoday-processed-
+
+      - run: mkdir -p output/pdfs
+
+      - name: Run Scraper
         env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          python gktoday_scraper_v7.py
+          MAX_DAYS_OLD: ${{ github.event.inputs.max_days_old || '2' }}
+          QUIZ_MODE: ${{ github.event.inputs.quiz_mode || 'combined' }}
+          HIDE_ANSWERS: ${{ github.event.inputs.hide_answers || 'false' }}
+          OUTPUT_DIR: output
+        run: python gktoday_scraper_v10.py
+
+      - name: Upload PDFs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gktoday-pdfs-${{ github.run_id }}
+          path: output/pdfs/*.pdf
+          retention-days: 7
