@@ -50,7 +50,7 @@ jobs:
 
       - name: Run Scraper
         env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           MAX_DAYS_OLD: ${{ github.event.inputs.max_days_old || '2' }}
           QUIZ_MODE: ${{ github.event.inputs.quiz_mode || 'combined' }}
