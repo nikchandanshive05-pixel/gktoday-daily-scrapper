@@ -64,7 +64,7 @@ OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "output")
 
 logger.info("=" * 55)
 logger.info("ENVIRONMENT CONFIGURATION")
-logger.info("TELEGRAM_TOKEN present: %s | len: %d", bool(TELEGRAM_TOKEN), len(TELEGRAM_TOKEN))
+logger.info("TELEGRAM_BOT_TOKEN present: %s | len: %d", bool(TELEGRAM_BOT_TOKEN), len(TELEGRAM_BOT_TOKEN))
 logger.info("TELEGRAM_CHAT_ID present: %s | len: %d", bool(TELEGRAM_CHAT_ID), len(TELEGRAM_CHAT_ID))
 logger.info("MAX_DAYS_OLD: %d | QUIZ_MODE: %s | HIDE_ANSWERS: %s", MAX_DAYS_OLD, QUIZ_MODE, HIDE_ANSWERS)
 logger.info("=" * 55)
