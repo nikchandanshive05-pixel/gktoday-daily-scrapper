@@ -1019,7 +1019,8 @@ class Pipeline:
 if __name__ == "__main__":
     p = Pipeline(
         output_dir=OUTPUT_DIR,
-        telegram_token=TELEGRAM_TOKEN,
+        telegram_token=TELEGRAM_BOT_TOKEN,
         telegram_chat_id=TELEGRAM_CHAT_ID
     )
     p.run()
+
