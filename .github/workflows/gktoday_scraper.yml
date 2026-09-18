@@ -1,20 +1,26 @@
-name: GKToday Scraper v10
+name: GKToday Daily Scraper & Digest
 
 on:
   schedule:
-    - cron: "30 0 * * *"   # 6:00 AM IST daily
+    - cron: "30 0 * * *"   # Runs daily at 06:00 AM IST (00:30 UTC)
   workflow_dispatch:
     inputs:
       max_days_old:
-        description: "Days back to scrape"
+        description: "Number of days back to scrape (default: 2)"
         required: false
         default: "2"
       quiz_mode:
-        description: "PDF mode: combined / separate / both"
+        description: "PDF generation mode: combined / separate / both / json-only"
         required: false
-        default: "combined"
+        default: "both"
+        type: choice
+        options:
+          - both
+          - combined
+          - separate
+          - json-only
       hide_answers:
-        description: "Hide answers in quiz PDF? (true/false)"
+        description: "Hide answers in quiz PDF for student test mode (true/false)"
         required: false
         default: "false"
 
@@ -23,45 +29,49 @@ env:
 
 jobs:
   scrape-and-deliver:
+    name: Scrape GKToday & Deliver Digests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
 
-      - name: Install deps
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Cache processed history
+      - name: Cache Processed History
         uses: actions/cache@v4
         with:
           path: output/processed.json
           key: gktoday-processed-${{ github.run_id }}
           restore-keys: gktoday-processed-
 
-      - run: mkdir -p output/pdfs
-
-      - name: Run Scraper
+      - name: Run GKToday Scraper & Digest Pipeline
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           MAX_DAYS_OLD: ${{ github.event.inputs.max_days_old || '2' }}
-          QUIZ_MODE: ${{ github.event.inputs.quiz_mode || 'combined' }}
+          QUIZ_MODE: ${{ github.event.inputs.quiz_mode || 'both' }}
           HIDE_ANSWERS: ${{ github.event.inputs.hide_answers || 'false' }}
           OUTPUT_DIR: output
         run: python gktoday_scraper_v10.py
 
-      - name: Upload PDFs
+      - name: Upload Generated PDFs & Data Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gktoday-pdfs-${{ github.run_id }}
-          path: output/pdfs/*.pdf
-          retention-days: 7
+          name: gktoday-digests-${{ github.run_id }}
+          path: |
+            output/pdfs/*.pdf
+            output/data/*.json
+          retention-days: 14
