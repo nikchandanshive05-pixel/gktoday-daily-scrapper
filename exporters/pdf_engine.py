@@ -67,9 +67,9 @@ mukta_pairs = [
 for reg_path, bold_path in mukta_pairs:
     if os.path.exists(reg_path):
         try:
-            pdfmetrics.registerFont(TTFont("Devanagari", reg_path))
+            pdfmetrics.registerFont(TTFont("Devanagari", reg_path, shapable=True))
             if os.path.exists(bold_path):
-                pdfmetrics.registerFont(TTFont("Devanagari-Bold", bold_path))
+                pdfmetrics.registerFont(TTFont("Devanagari-Bold", bold_path, shapable=True))
                 pdfmetrics.registerFontFamily("Devanagari", normal="Devanagari", bold="Devanagari-Bold", italic="Devanagari", boldItalic="Devanagari-Bold")
                 DEVANAGARI_BOLD = "Devanagari-Bold"
             else:
@@ -92,7 +92,7 @@ if not FONT_REGISTERED:
     ]:
         if os.path.exists(candidate):
             try:
-                pdfmetrics.registerFont(TTFont("Devanagari", candidate))
+                pdfmetrics.registerFont(TTFont("Devanagari", candidate, shapable=True))
                 pdfmetrics.registerFontFamily("Devanagari", normal="Devanagari", bold="Devanagari", italic="Devanagari", boldItalic="Devanagari")
                 FONT_REGISTERED = True
                 DEVANAGARI_FONT = "Devanagari"
@@ -184,6 +184,7 @@ class PDFExporter:
                 leading=17,
                 textColor=HexColor(PALETTE["secondary"]),
                 alignment=TA_CENTER,
+                shaping=True,
             ),
             "SectionHeader": ParagraphStyle(
                 "SectionHeader",
@@ -192,6 +193,7 @@ class PDFExporter:
                 leading=20,
                 textColor=HexColor(PALETTE["primary"]),
                 spaceAfter=4,
+                shaping=True,
             ),
             "ArticleTitleEn": ParagraphStyle(
                 "ArticleTitleEn",
@@ -203,11 +205,12 @@ class PDFExporter:
             ),
             "ArticleTitleMr": ParagraphStyle(
                 "ArticleTitleMr",
-                fontName=norm_font,
+                fontName=bold_font,
                 fontSize=13,
                 leading=18,
                 textColor=HexColor(PALETTE["primary"]),
                 spaceAfter=3,
+                shaping=True,
             ),
             "MetaEn": ParagraphStyle(
                 "MetaEn",
@@ -222,6 +225,7 @@ class PDFExporter:
                 fontSize=8.5,
                 leading=12.5,
                 textColor=HexColor(PALETTE["muted"]),
+                shaping=True,
             ),
             "PointersEn": ParagraphStyle(
                 "PointersEn",
@@ -236,6 +240,7 @@ class PDFExporter:
                 fontSize=8.5,
                 leading=12.5,
                 textColor=HexColor(PALETTE["primary"]),
+                shaping=True,
             ),
             "BodyEn": ParagraphStyle(
                 "BodyEn",
@@ -254,6 +259,7 @@ class PDFExporter:
                 textColor=HexColor(PALETTE["text"]),
                 alignment=TA_JUSTIFY,
                 spaceAfter=7,
+                shaping=True,
             ),
             "QuizQuestion": ParagraphStyle(
                 "QuizQuestion",
@@ -410,7 +416,7 @@ class PDFExporter:
 
                 if art.prelims_pointers:
                     clean_pointers = html.escape(" | ".join(art.prelims_pointers[:3]))
-                    header_elements.append(Paragraph(f"<b>📌 Prelims Pointers:</b> {clean_pointers}", pointers_style))
+                    header_elements.append(Paragraph(f"<b>[Prelims Key Pointers]:</b> {clean_pointers}", pointers_style))
 
                 bg_color = HexColor(PALETTE["bg_marathi"]) if is_mr else HexColor(PALETTE["bg_banner_en"])
                 border_color = HexColor(PALETTE["border_marathi"]) if is_mr else HexColor(PALETTE["border_banner_en"])
