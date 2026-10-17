@@ -59,18 +59,20 @@ def fetch_html(url: str, timeout: int = 20) -> Optional[str]:
     # 1. Social Crawler UA (Bypasses Cloudflare Datacenter & Reverse-DNS checks)
     try:
         resp = requests.get(url, headers=SOCIAL_HEADERS, timeout=timeout)
+        logger.info(f"[DIAG fetch_html] {url} Social UA status: {resp.status_code}, length: {len(resp.content)}")
         if resp.status_code == 200 and len(resp.text) > 300:
             return resp.text
     except Exception as e:
-        logger.debug(f"Social UA fetch failed for {url}: {e}")
+        logger.info(f"[DIAG fetch_html] Social UA error for {url}: {e}")
 
     # 2. Twitterbot UA
     try:
         resp = requests.get(url, headers=TWITTER_HEADERS, timeout=timeout)
+        logger.info(f"[DIAG fetch_html] {url} Twitter UA status: {resp.status_code}, length: {len(resp.content)}")
         if resp.status_code == 200 and len(resp.text) > 300:
             return resp.text
     except Exception as e:
-        logger.debug(f"Twitterbot UA fetch failed for {url}: {e}")
+        logger.info(f"[DIAG fetch_html] Twitterbot UA error for {url}: {e}")
 
     # 3. curl_cffi TLS impersonation
     if CURL_CFFI_AVAILABLE:
@@ -82,14 +84,16 @@ def fetch_html(url: str, timeout: int = 20) -> Optional[str]:
                 headers={"Accept-Language": "en-US,en;q=0.9,mr;q=0.8"},
                 verify=False,
             )
+            logger.info(f"[DIAG fetch_html] {url} curl_cffi status: {resp.status_code}, length: {len(resp.content)}")
             if resp.status_code == 200 and len(resp.text) > 300:
                 return resp.text
         except Exception as e:
-            logger.debug(f"curl_cffi fetch failed for {url}: {e}")
+            logger.info(f"[DIAG fetch_html] curl_cffi error for {url}: {e}")
 
     # 4. Chrome Desktop UA fallback
     try:
         resp = requests.get(url, headers=CHROME_HEADERS, timeout=timeout)
+        logger.info(f"[DIAG fetch_html] {url} Chrome UA status: {resp.status_code}, length: {len(resp.content)}")
         if resp.status_code == 200 and len(resp.text) > 300:
             return resp.text
     except Exception as e:
@@ -105,39 +109,47 @@ def fetch_feed_entries(feed_url: str, timeout: int = 20) -> List[Any]:
     # 1. Social Crawler UA (Whitelisted on News CDN RSS feeds)
     try:
         resp = requests.get(feed_url, headers=SOCIAL_HEADERS, timeout=timeout)
+        logger.info(f"[DIAG feed] {feed_url} Social UA status: {resp.status_code}, length: {len(resp.content)}")
         if resp.status_code == 200 and resp.content:
             parsed = feedparser.parse(resp.content)
+            logger.info(f"[DIAG feed] {feed_url} Social UA parsed entries: {len(parsed.entries)}")
             if parsed.entries:
                 return parsed.entries
     except Exception as e:
-        logger.debug(f"Social UA feed fetch failed for {feed_url}: {e}")
+        logger.info(f"[DIAG feed] Social UA error for {feed_url}: {e}")
 
     # 2. Twitterbot UA
     try:
         resp = requests.get(feed_url, headers=TWITTER_HEADERS, timeout=timeout)
+        logger.info(f"[DIAG feed] {feed_url} Twitter UA status: {resp.status_code}, length: {len(resp.content)}")
         if resp.status_code == 200 and resp.content:
             parsed = feedparser.parse(resp.content)
+            logger.info(f"[DIAG feed] {feed_url} Twitter UA parsed entries: {len(parsed.entries)}")
             if parsed.entries:
                 return parsed.entries
     except Exception as e:
-        logger.debug(f"Twitterbot UA feed fetch failed for {feed_url}: {e}")
+        logger.info(f"[DIAG feed] Twitterbot UA error for {feed_url}: {e}")
 
     # 3. curl_cffi TLS impersonation
     if CURL_CFFI_AVAILABLE:
         try:
             resp = cureq.get(feed_url, impersonate="chrome124", timeout=timeout, verify=False)
+            logger.info(f"[DIAG feed] {feed_url} curl_cffi status: {resp.status_code}, length: {len(resp.content)}")
             if resp.status_code == 200 and resp.content:
                 parsed = feedparser.parse(resp.content)
+                logger.info(f"[DIAG feed] {feed_url} curl_cffi parsed entries: {len(parsed.entries)}")
                 if parsed.entries:
                     return parsed.entries
         except Exception as e:
-            logger.debug(f"curl_cffi feed fetch failed for {feed_url}: {e}")
+            logger.info(f"[DIAG feed] curl_cffi error for {feed_url}: {e}")
 
     # 4. Chrome headers
     try:
         resp = requests.get(feed_url, headers=CHROME_HEADERS, timeout=timeout)
+        logger.info(f"[DIAG feed] {feed_url} Chrome UA status: {resp.status_code}, length: {len(resp.content)}")
         if resp.status_code == 200 and resp.content:
             parsed = feedparser.parse(resp.content)
+            logger.info(f"[DIAG feed] {feed_url} Chrome UA parsed entries: {len(parsed.entries)}")
             if parsed.entries:
                 return parsed.entries
     except Exception as e:
@@ -146,6 +158,7 @@ def fetch_feed_entries(feed_url: str, timeout: int = 20) -> List[Any]:
     # 5. Standard feedparser fallback
     try:
         parsed = feedparser.parse(feed_url)
+        logger.info(f"[DIAG feed] {feed_url} fallback feedparser entries: {len(parsed.entries)}")
         return parsed.entries or []
     except Exception:
         return []
