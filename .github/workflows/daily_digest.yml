@@ -1,0 +1,90 @@
+name: Civil Services Daily Compendium & Multi-Source Digest
+
+on:
+  schedule:
+    - cron: "30 0 * * *"   # Runs daily at 06:00 AM IST (00:30 UTC)
+  workflow_dispatch:
+    inputs:
+      sources:
+        description: "Sources to scrape ('hindu,express,loksatta,gktoday' or 'all')"
+        required: false
+        default: "all"
+      days:
+        description: "Number of days back to scrape (default: 1)"
+        required: false
+        default: "1"
+      mode:
+        description: "Output format mode"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - pdf-only
+          - markdown-only
+          - json-only
+          - no-pdf
+      hide_answers:
+        description: "Hide answers in quiz bank for test mode"
+        required: false
+        default: false
+        type: boolean
+      force:
+        description: "Force re-scraping (ignore deduplication cache)"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  scrape-enrich-deliver:
+    name: Scrape Multi-Source Editorials & Deliver Compendium
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Cache Deduplication History
+        uses: actions/cache@v4
+        with:
+          path: output/processed.json
+          key: compendium-processed-${{ github.run_id }}
+          restore-keys: compendium-processed-
+
+      - name: Run Multi-Source Pipeline
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          python main.py \
+            --sources "${{ github.event.inputs.sources || 'all' }}" \
+            --days "${{ github.event.inputs.days || '1' }}" \
+            --mode "${{ github.event.inputs.mode || 'all' }}" \
+            ${{ github.event.inputs.hide_answers == 'true' && '--hide-answers' || '' }} \
+            ${{ github.event.inputs.force == 'true' && '--force' || '' }}
+
+      - name: Upload Daily Digest Artifacts (PDF, Markdown, JSON)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upsc-mpsc-compendium-${{ github.run_id }}
+          path: |
+            output/pdf/*.pdf
+            output/notes/**
+            output/data/*.json
+          retention-days: 14
