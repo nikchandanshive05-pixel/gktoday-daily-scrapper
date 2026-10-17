@@ -58,8 +58,9 @@ class MarkdownExporter:
     def _render_article_markdown(self, art: Article) -> str:
         topics_yaml = "\n".join([f'  - "{t}"' for t in art.syllabus_topics]) if art.syllabus_topics else '  - "Current Affairs"'
         
+        clean_title = art.title.replace('"', '\\"')
         md = f"""---
-title: "{art.title.replace('"', '\\"')}"
+title: "{clean_title}"
 date: {art.published_date}
 source: "{art.source}"
 language: "{art.language}"

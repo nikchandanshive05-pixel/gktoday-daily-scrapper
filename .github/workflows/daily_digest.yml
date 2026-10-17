@@ -48,7 +48,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
 
       - name: Install Dependencies
@@ -71,12 +71,18 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PYTHONIOENCODING: "utf-8"
         run: |
+          EXTRA_ARGS=""
+          if [ "${{ github.event.inputs.hide_answers }}" = "true" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --hide-answers"
+          fi
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --force"
+          fi
           python main.py \
             --sources "${{ github.event.inputs.sources || 'all' }}" \
             --days "${{ github.event.inputs.days || '1' }}" \
             --mode "${{ github.event.inputs.mode || 'all' }}" \
-            ${{ github.event.inputs.hide_answers == 'true' && '--hide-answers' || '' }} \
-            ${{ github.event.inputs.force == 'true' && '--force' || '' }}
+            $EXTRA_ARGS
 
       - name: Upload Daily Digest Artifacts (PDF, Markdown, JSON)
         if: always()
