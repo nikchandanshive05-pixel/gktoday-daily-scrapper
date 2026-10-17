@@ -1,15 +1,14 @@
 """
 Indian Express Explained and Opinion Scraper.
-Uses official RSS feeds and Trafilatura for clean editorial extraction.
+Uses official RSS feeds and resilient network extractors to bypass Cloudflare WAF.
 """
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import List
-import feedparser
-import trafilatura
 
 from core.base_scraper import BaseScraper
 from core.models import Article
+from core.network import fetch_feed_entries, fetch_html, extract_clean_text
 
 logger = logging.getLogger("indian_express")
 
@@ -27,17 +26,14 @@ class IndianExpressScraper(BaseScraper):
 
     def fetch_articles(self, days: int = 1) -> List[Article]:
         articles: List[Article] = []
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        # Allow 8-hour timezone buffer between UTC and IST
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days, hours=8)
 
         for category, feed_url in FEEDS:
-            try:
-                feed = feedparser.parse(feed_url)
-                logger.info(f"Indian Express {category} feed yielded {len(feed.entries)} entries.")
-            except Exception as e:
-                logger.error(f"Error fetching Indian Express feed '{feed_url}': {e}")
-                continue
+            entries = fetch_feed_entries(feed_url)
+            logger.info(f"Indian Express {category} feed yielded {len(entries)} entries.")
 
-            for entry in feed.entries:
+            for entry in entries:
                 pub_date = None
                 if hasattr(entry, "published_parsed") and entry.published_parsed:
                     pub_date = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
@@ -46,20 +42,18 @@ class IndianExpressScraper(BaseScraper):
                     continue
 
                 date_str = pub_date.strftime("%Y-%m-%d") if pub_date else datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                link = entry.get("link", "").strip()
-                title = entry.get("title", "").strip()
+                link = getattr(entry, "link", "").strip()
+                title = getattr(entry, "title", "").strip()
 
                 if not link or not title:
                     continue
 
-                try:
-                    downloaded = trafilatura.fetch_url(link)
-                    body = trafilatura.extract(downloaded, include_comments=False) if downloaded else None
-                    if not body or len(body.strip()) < 150:
-                        body = entry.get("summary", "")
-                except Exception as e:
-                    logger.warning(f"Trafilatura failed for {link}: {e}")
-                    body = entry.get("summary", "")
+                # Fetch full article with Cloudflare bypass
+                html = fetch_html(link)
+                body = extract_clean_text(html) if html else ""
+                if not body or len(body.strip()) < 150:
+                    summary = getattr(entry, "summary", "")
+                    body = summary if len(summary.strip()) > 100 else body
 
                 if not body or len(body.strip()) < 100:
                     continue
