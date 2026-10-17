@@ -10,6 +10,13 @@ import trafilatura
 from bs4 import BeautifulSoup
 from typing import Optional, List, Dict, Any
 
+try:
+    from curl_cffi import requests as cureq
+    CURL_CFFI_AVAILABLE = True
+except ImportError:
+    cureq = None
+    CURL_CFFI_AVAILABLE = False
+
 logger = logging.getLogger("network")
 
 CHROME_HEADERS = {
@@ -32,16 +39,31 @@ CHROME_HEADERS = {
 GOOGLEBOT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
     "Accept": "*/*",
-    "Accept-Encoding": "gzip, deflate, br",
 }
 
 
 def fetch_html(url: str, timeout: int = 20) -> Optional[str]:
     """
-    Fetch raw HTML from a URL with automatic Googlebot fallback
-    to overcome Cloudflare datacenter IP blocks.
+    Fetch raw HTML from a URL with multi-tier bypass:
+    1. curl_cffi with Chrome 124 TLS fingerprint impersonation (bypasses Cloudflare JA3/JA4 blocks)
+    2. requests with Chrome headers
+    3. requests with Googlebot crawler headers
     """
-    # 1. Try with Chrome Desktop headers
+    # 1. Try with curl_cffi TLS impersonation
+    if CURL_CFFI_AVAILABLE:
+        try:
+            resp = cureq.get(
+                url,
+                impersonate="chrome124",
+                timeout=timeout,
+                headers={"Accept-Language": "en-US,en;q=0.9,mr;q=0.8"},
+            )
+            if resp.status_code == 200 and len(resp.text) > 300:
+                return resp.text
+        except Exception as e:
+            logger.debug(f"curl_cffi fetch failed for {url}: {e}")
+
+    # 2. Try with standard requests Chrome Desktop headers
     try:
         resp = requests.get(url, headers=CHROME_HEADERS, timeout=timeout)
         if resp.status_code == 200 and len(resp.text) > 300:
@@ -49,7 +71,7 @@ def fetch_html(url: str, timeout: int = 20) -> Optional[str]:
     except Exception as e:
         logger.debug(f"Chrome UA fetch failed for {url}: {e}")
 
-    # 2. Try with Googlebot crawler headers (whitelisted by news WAFs)
+    # 3. Try with Googlebot crawler headers
     try:
         resp = requests.get(url, headers=GOOGLEBOT_HEADERS, timeout=timeout)
         if resp.status_code == 200 and len(resp.text) > 300:
@@ -64,9 +86,21 @@ def fetch_html(url: str, timeout: int = 20) -> Optional[str]:
 
 def fetch_feed_entries(feed_url: str, timeout: int = 20) -> List[Any]:
     """
-    Fetch RSS feed entries using requests with browser headers
+    Fetch RSS feed entries using TLS impersonation and browser headers
     to bypass Cloudflare 403 blocks on feedparser's default User-Agent.
     """
+    # 1. Try with curl_cffi TLS impersonation
+    if CURL_CFFI_AVAILABLE:
+        try:
+            resp = cureq.get(feed_url, impersonate="chrome124", timeout=timeout)
+            if resp.status_code == 200 and resp.content:
+                parsed = feedparser.parse(resp.content)
+                if parsed.entries:
+                    return parsed.entries
+        except Exception as e:
+            logger.debug(f"curl_cffi feed fetch failed for {feed_url}: {e}")
+
+    # 2. Try with requests Chrome headers
     try:
         resp = requests.get(feed_url, headers=CHROME_HEADERS, timeout=timeout)
         if resp.status_code == 200 and resp.content:
@@ -76,7 +110,7 @@ def fetch_feed_entries(feed_url: str, timeout: int = 20) -> List[Any]:
     except Exception as e:
         logger.debug(f"Direct feed fetch failed for {feed_url}: {e}")
 
-    # Fallback with Googlebot headers
+    # 3. Fallback with Googlebot headers
     try:
         resp = requests.get(feed_url, headers=GOOGLEBOT_HEADERS, timeout=timeout)
         if resp.status_code == 200 and resp.content:
@@ -86,7 +120,7 @@ def fetch_feed_entries(feed_url: str, timeout: int = 20) -> List[Any]:
     except Exception as e:
         logger.warning(f"Feed fetch failed for {feed_url}: {e}")
 
-    # Standard feedparser fallback
+    # 4. Standard feedparser fallback
     try:
         parsed = feedparser.parse(feed_url)
         return parsed.entries or []

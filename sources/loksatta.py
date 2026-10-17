@@ -53,19 +53,39 @@ class LoksattaScraper(BaseScraper):
 
             logger.info(f"Discovered {len(candidates)} candidate articles in Loksatta {cat_name}.")
 
-            # Extract content for up to 8 top candidate articles per section
-            for link, preliminary_title in candidates[:8]:
+            # Extract content for candidate articles per section
+            for link, preliminary_title in candidates[:10]:
                 art_html = fetch_html(link)
-                body = extract_clean_text(art_html) if art_html else ""
+                if not art_html:
+                    continue
 
+                body = extract_clean_text(art_html)
                 if not body or len(body.strip()) < 150:
                     continue
 
+                # Extract precise title and date from article DOM
+                final_title = preliminary_title
+                pub_date = today_str
+                try:
+                    art_soup = BeautifulSoup(art_html, "html.parser")
+                    h1 = art_soup.find("h1")
+                    if h1 and len(h1.get_text(strip=True)) > 8:
+                        final_title = h1.get_text(strip=True)
+
+                    time_meta = (
+                        art_soup.find("meta", property="article:published_time")
+                        or art_soup.find("meta", attrs={"name": "publish-date"})
+                    )
+                    if time_meta and time_meta.get("content"):
+                        pub_date = time_meta["content"][:10]
+                except Exception:
+                    pass
+
                 art = Article(
-                    title=preliminary_title,
+                    title=final_title,
                     url=link,
                     source="Loksatta",
-                    published_date=today_str,
+                    published_date=pub_date,
                     full_text=body.strip(),
                     language="mr",
                     author="लोकसत्ता संपादकीय मंडळ",

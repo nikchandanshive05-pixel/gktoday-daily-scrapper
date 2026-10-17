@@ -15,19 +15,21 @@ logger = logging.getLogger("indian_express")
 FEEDS = [
     ("Explained", "https://indianexpress.com/section/explained/feed/"),
     ("Editorial", "https://indianexpress.com/section/opinion/editorials/feed/"),
+    ("Columns", "https://indianexpress.com/section/opinion/columns/feed/"),
 ]
 
 
 class IndianExpressScraper(BaseScraper):
-    """Scraper for Indian Express Explained and Editorials."""
+    """Scraper for Indian Express Explained, Editorials, and Opinion Columns."""
 
     def __init__(self):
         super().__init__(name="Indian Express", source_id="indian_express")
 
     def fetch_articles(self, days: int = 1) -> List[Article]:
         articles: List[Article] = []
-        # Allow 8-hour timezone buffer between UTC and IST
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days, hours=8)
+        seen_urls = set()
+        # Ensure a generous 48-hour window so no article is missed across UTC/IST date lines
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max(days, 2), hours=4)
 
         for category, feed_url in FEEDS:
             entries = fetch_feed_entries(feed_url)
@@ -45,8 +47,9 @@ class IndianExpressScraper(BaseScraper):
                 link = getattr(entry, "link", "").strip()
                 title = getattr(entry, "title", "").strip()
 
-                if not link or not title:
+                if not link or not title or link in seen_urls:
                     continue
+                seen_urls.add(link)
 
                 # Fetch full article with Cloudflare bypass
                 html = fetch_html(link)
