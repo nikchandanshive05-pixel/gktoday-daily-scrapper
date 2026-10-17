@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       sources:
-        description: "Sources to scrape ('hindu,express,loksatta,gktoday' or 'all')"
+        description: "Sources to scrape ('hindu,livemint,lokmat,mahasamvad,express,loksatta,gktoday' or 'all')"
         required: false
         default: "all"
       days:

@@ -31,6 +31,9 @@ from sources.the_hindu import HinduScraper
 from sources.indian_express import IndianExpressScraper
 from sources.loksatta import LoksattaScraper
 from sources.gktoday import GKTodayScraper
+from sources.livemint import LiveMintScraper
+from sources.lokmat import LokmatScraper
+from sources.mahasamvad import MahasamvadScraper
 from exporters.pdf_engine import PDFExporter
 from exporters.markdown_engine import MarkdownExporter
 from exporters.json_engine import JSONExporter
@@ -228,6 +231,9 @@ class CompendiumPipeline:
     def _resolve_sources(self) -> list:
         src_map = {
             "hindu": HinduScraper,
+            "livemint": LiveMintScraper,
+            "lokmat": LokmatScraper,
+            "mahasamvad": MahasamvadScraper,
             "express": IndianExpressScraper,
             "loksatta": LoksattaScraper,
             "gktoday": GKTodayScraper,

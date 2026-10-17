@@ -103,7 +103,7 @@ class NumberedCanvas(pdfcanvas.Canvas):
         self.line(16 * mm, 14 * mm, A4[0] - 16 * mm, 14 * mm)
         self.setFont("Helvetica", 8)
         self.setFillColor(HexColor(PALETTE["light_gray"]))
-        self.drawString(16 * mm, 9 * mm, "The Hindu • Indian Express • Loksatta • GKToday")
+        self.drawString(16 * mm, 9 * mm, "The Hindu • LiveMint • Lokmat • DGIPR • GKToday")
 
         page_str = f"Page {self._pageNumber} of {total_pages}"
         self.setFont("Helvetica-Bold", 8)
@@ -249,10 +249,15 @@ class PDFExporter:
         summary_data = [
             ["Source / Publisher", "Type", "Articles"],
             ["The Hindu", "Editorials & Op-Ed", str(src_counts.get("The Hindu", 0))],
-            ["Indian Express", "Explained & Ideas", str(src_counts.get("Indian Express", 0))],
-            ["Loksatta (लोकसत्ता)", "संपादकीय व विश्लेषक", str(src_counts.get("Loksatta", 0))],
+            ["LiveMint", "Opinion & Economy", str(src_counts.get("LiveMint", 0))],
+            ["Lokmat (लोकमत)", "अग्रलेख व विशेष लेख", str(src_counts.get("Lokmat", 0))],
+            ["Mahasamvad (DGIPR)", "शासकीय निर्णय व धोरणे", str(src_counts.get("Mahasamvad (DGIPR)", 0))],
             ["GKToday", "Current Affairs & MCQs", f"{src_counts.get('GKToday', 0)} CA + {len(digest.quizzes)} MCQs"],
         ]
+        if src_counts.get("Indian Express", 0) > 0:
+            summary_data.insert(2, ["Indian Express", "Explained & Ideas", str(src_counts.get("Indian Express", 0))])
+        if src_counts.get("Loksatta", 0) > 0:
+            summary_data.insert(3, ["Loksatta (लोकसत्ता)", "संपादकीय व विश्लेषक", str(src_counts.get("Loksatta", 0))])
         t = Table(summary_data, colWidths=[65 * mm, 65 * mm, 40 * mm])
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), HexColor(PALETTE["primary"])),
