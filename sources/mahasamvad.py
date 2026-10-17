@@ -26,7 +26,7 @@ class MahasamvadScraper(BaseScraper):
     def fetch_articles(self, days: int = 1) -> List[Article]:
         articles: List[Article] = []
         seen_urls = set()
-        cutoff = datetime.now(timezone.utc) - timedelta(days=max(days, 3), hours=4)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max(days, 7), hours=8)
 
         entries = fetch_feed_entries(MAHASAMVAD_FEED)
         logger.info(f"Mahasamvad DGIPR feed yielded {len(entries)} entries.")

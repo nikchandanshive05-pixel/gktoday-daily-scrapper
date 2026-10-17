@@ -10,6 +10,9 @@ import trafilatura
 from bs4 import BeautifulSoup
 from typing import Optional, List, Dict, Any
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 try:
     from curl_cffi import requests as cureq
     CURL_CFFI_AVAILABLE = True
@@ -58,7 +61,7 @@ def fetch_html(url: str, timeout: int = 20) -> Optional[str]:
     """
     # 1. Social Crawler UA (Bypasses Cloudflare Datacenter & Reverse-DNS checks)
     try:
-        resp = requests.get(url, headers=SOCIAL_HEADERS, timeout=timeout)
+        resp = requests.get(url, headers=SOCIAL_HEADERS, timeout=timeout, verify=False)
         logger.info(f"[DIAG fetch_html] {url} Social UA status: {resp.status_code}, length: {len(resp.content)}")
         if resp.status_code == 200 and len(resp.text) > 300:
             return resp.text
@@ -67,7 +70,7 @@ def fetch_html(url: str, timeout: int = 20) -> Optional[str]:
 
     # 2. Twitterbot UA
     try:
-        resp = requests.get(url, headers=TWITTER_HEADERS, timeout=timeout)
+        resp = requests.get(url, headers=TWITTER_HEADERS, timeout=timeout, verify=False)
         logger.info(f"[DIAG fetch_html] {url} Twitter UA status: {resp.status_code}, length: {len(resp.content)}")
         if resp.status_code == 200 and len(resp.text) > 300:
             return resp.text
@@ -92,7 +95,7 @@ def fetch_html(url: str, timeout: int = 20) -> Optional[str]:
 
     # 4. Chrome Desktop UA fallback
     try:
-        resp = requests.get(url, headers=CHROME_HEADERS, timeout=timeout)
+        resp = requests.get(url, headers=CHROME_HEADERS, timeout=timeout, verify=False)
         logger.info(f"[DIAG fetch_html] {url} Chrome UA status: {resp.status_code}, length: {len(resp.content)}")
         if resp.status_code == 200 and len(resp.text) > 300:
             return resp.text
@@ -108,7 +111,7 @@ def fetch_feed_entries(feed_url: str, timeout: int = 20) -> List[Any]:
     """
     # 1. Social Crawler UA (Whitelisted on News CDN RSS feeds)
     try:
-        resp = requests.get(feed_url, headers=SOCIAL_HEADERS, timeout=timeout)
+        resp = requests.get(feed_url, headers=SOCIAL_HEADERS, timeout=timeout, verify=False)
         logger.info(f"[DIAG feed] {feed_url} Social UA status: {resp.status_code}, length: {len(resp.content)}")
         if resp.status_code == 200 and resp.content:
             parsed = feedparser.parse(resp.content)
@@ -120,7 +123,7 @@ def fetch_feed_entries(feed_url: str, timeout: int = 20) -> List[Any]:
 
     # 2. Twitterbot UA
     try:
-        resp = requests.get(feed_url, headers=TWITTER_HEADERS, timeout=timeout)
+        resp = requests.get(feed_url, headers=TWITTER_HEADERS, timeout=timeout, verify=False)
         logger.info(f"[DIAG feed] {feed_url} Twitter UA status: {resp.status_code}, length: {len(resp.content)}")
         if resp.status_code == 200 and resp.content:
             parsed = feedparser.parse(resp.content)
@@ -145,7 +148,7 @@ def fetch_feed_entries(feed_url: str, timeout: int = 20) -> List[Any]:
 
     # 4. Chrome headers
     try:
-        resp = requests.get(feed_url, headers=CHROME_HEADERS, timeout=timeout)
+        resp = requests.get(feed_url, headers=CHROME_HEADERS, timeout=timeout, verify=False)
         logger.info(f"[DIAG feed] {feed_url} Chrome UA status: {resp.status_code}, length: {len(resp.content)}")
         if resp.status_code == 200 and resp.content:
             parsed = feedparser.parse(resp.content)
