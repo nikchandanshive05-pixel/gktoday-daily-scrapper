@@ -19,6 +19,17 @@ except ImportError:
 
 logger = logging.getLogger("network")
 
+SOCIAL_HEADERS = {
+    "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,mr;q=0.8",
+}
+
+TWITTER_HEADERS = {
+    "User-Agent": "Twitterbot/1.0",
+    "Accept": "*/*",
+}
+
 CHROME_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -36,20 +47,32 @@ CHROME_HEADERS = {
     "Upgrade-Insecure-Requests": "1",
 }
 
-GOOGLEBOT_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
-    "Accept": "*/*",
-}
-
 
 def fetch_html(url: str, timeout: int = 20) -> Optional[str]:
     """
     Fetch raw HTML from a URL with multi-tier bypass:
-    1. curl_cffi with Chrome 124 TLS fingerprint impersonation (bypasses Cloudflare JA3/JA4 blocks)
-    2. requests with Chrome headers
-    3. requests with Googlebot crawler headers
+    1. Social Crawler UA (facebookexternalhit - whitelisted by Cloudflare news WAFs without PTR lookup)
+    2. Twitterbot UA
+    3. curl_cffi with Chrome 124 TLS fingerprint impersonation
+    4. Chrome Desktop UA
     """
-    # 1. Try with curl_cffi TLS impersonation
+    # 1. Social Crawler UA (Bypasses Cloudflare Datacenter & Reverse-DNS checks)
+    try:
+        resp = requests.get(url, headers=SOCIAL_HEADERS, timeout=timeout)
+        if resp.status_code == 200 and len(resp.text) > 300:
+            return resp.text
+    except Exception as e:
+        logger.debug(f"Social UA fetch failed for {url}: {e}")
+
+    # 2. Twitterbot UA
+    try:
+        resp = requests.get(url, headers=TWITTER_HEADERS, timeout=timeout)
+        if resp.status_code == 200 and len(resp.text) > 300:
+            return resp.text
+    except Exception as e:
+        logger.debug(f"Twitterbot UA fetch failed for {url}: {e}")
+
+    # 3. curl_cffi TLS impersonation
     if CURL_CFFI_AVAILABLE:
         try:
             resp = cureq.get(
@@ -57,42 +80,52 @@ def fetch_html(url: str, timeout: int = 20) -> Optional[str]:
                 impersonate="chrome124",
                 timeout=timeout,
                 headers={"Accept-Language": "en-US,en;q=0.9,mr;q=0.8"},
+                verify=False,
             )
             if resp.status_code == 200 and len(resp.text) > 300:
                 return resp.text
         except Exception as e:
             logger.debug(f"curl_cffi fetch failed for {url}: {e}")
 
-    # 2. Try with standard requests Chrome Desktop headers
+    # 4. Chrome Desktop UA fallback
     try:
         resp = requests.get(url, headers=CHROME_HEADERS, timeout=timeout)
         if resp.status_code == 200 and len(resp.text) > 300:
             return resp.text
     except Exception as e:
-        logger.debug(f"Chrome UA fetch failed for {url}: {e}")
-
-    # 3. Try with Googlebot crawler headers
-    try:
-        resp = requests.get(url, headers=GOOGLEBOT_HEADERS, timeout=timeout)
-        if resp.status_code == 200 and len(resp.text) > 300:
-            return resp.text
-        else:
-            logger.warning(f"Googlebot UA returned status {resp.status_code} for {url}")
-    except Exception as e:
-        logger.warning(f"Failed to fetch {url}: {e}")
+        logger.warning(f"Chrome UA fetch failed for {url}: {e}")
 
     return None
 
 
 def fetch_feed_entries(feed_url: str, timeout: int = 20) -> List[Any]:
     """
-    Fetch RSS feed entries using TLS impersonation and browser headers
-    to bypass Cloudflare 403 blocks on feedparser's default User-Agent.
+    Fetch RSS feed entries using social crawler bypass and TLS impersonation.
     """
-    # 1. Try with curl_cffi TLS impersonation
+    # 1. Social Crawler UA (Whitelisted on News CDN RSS feeds)
+    try:
+        resp = requests.get(feed_url, headers=SOCIAL_HEADERS, timeout=timeout)
+        if resp.status_code == 200 and resp.content:
+            parsed = feedparser.parse(resp.content)
+            if parsed.entries:
+                return parsed.entries
+    except Exception as e:
+        logger.debug(f"Social UA feed fetch failed for {feed_url}: {e}")
+
+    # 2. Twitterbot UA
+    try:
+        resp = requests.get(feed_url, headers=TWITTER_HEADERS, timeout=timeout)
+        if resp.status_code == 200 and resp.content:
+            parsed = feedparser.parse(resp.content)
+            if parsed.entries:
+                return parsed.entries
+    except Exception as e:
+        logger.debug(f"Twitterbot UA feed fetch failed for {feed_url}: {e}")
+
+    # 3. curl_cffi TLS impersonation
     if CURL_CFFI_AVAILABLE:
         try:
-            resp = cureq.get(feed_url, impersonate="chrome124", timeout=timeout)
+            resp = cureq.get(feed_url, impersonate="chrome124", timeout=timeout, verify=False)
             if resp.status_code == 200 and resp.content:
                 parsed = feedparser.parse(resp.content)
                 if parsed.entries:
@@ -100,7 +133,7 @@ def fetch_feed_entries(feed_url: str, timeout: int = 20) -> List[Any]:
         except Exception as e:
             logger.debug(f"curl_cffi feed fetch failed for {feed_url}: {e}")
 
-    # 2. Try with requests Chrome headers
+    # 4. Chrome headers
     try:
         resp = requests.get(feed_url, headers=CHROME_HEADERS, timeout=timeout)
         if resp.status_code == 200 and resp.content:
@@ -108,19 +141,9 @@ def fetch_feed_entries(feed_url: str, timeout: int = 20) -> List[Any]:
             if parsed.entries:
                 return parsed.entries
     except Exception as e:
-        logger.debug(f"Direct feed fetch failed for {feed_url}: {e}")
+        logger.debug(f"Chrome headers feed fetch failed for {feed_url}: {e}")
 
-    # 3. Fallback with Googlebot headers
-    try:
-        resp = requests.get(feed_url, headers=GOOGLEBOT_HEADERS, timeout=timeout)
-        if resp.status_code == 200 and resp.content:
-            parsed = feedparser.parse(resp.content)
-            if parsed.entries:
-                return parsed.entries
-    except Exception as e:
-        logger.warning(f"Feed fetch failed for {feed_url}: {e}")
-
-    # 4. Standard feedparser fallback
+    # 5. Standard feedparser fallback
     try:
         parsed = feedparser.parse(feed_url)
         return parsed.entries or []
