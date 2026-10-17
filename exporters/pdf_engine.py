@@ -1,10 +1,12 @@
 """
 Magazine-grade PDF Compendium Exporter using ReportLab.
 Includes NumberedCanvas (Page X of Y), embedded outline bookmarks,
-and native Devanagari font support for Marathi (Loksatta) articles.
+and native Devanagari font support for Marathi (Lokmat / Mahasamvad / Loksatta) articles.
+Renders full, unabridged article bodies categorized by GS paper without artificial truncation.
 """
 import os
 import re
+import html
 import logging
 from typing import List, Optional
 
@@ -35,34 +37,75 @@ PALETTE = {
     "text": "#1f2937",          # Dark Charcoal
     "muted": "#4b5563",         # Slate Gray
     "light_gray": "#94a3b8",    # Cool Gray
-    "border": "#e2e8f0",        # Light Border
+    "border": "#cbd5e1",        # Light Border
     "bg_cover": "#f8fafc",      # Crisp Slate White
     "bg_card": "#ffffff",
     "bg_marathi": "#fefce8",    # Warm Cream tint for Marathi
     "border_marathi": "#fef08a",
+    "bg_banner_en": "#f1f5f9",  # Soft slate header
+    "border_banner_en": "#cbd5e1",
     "bg_quiz": "#fdf4ff",       # Soft Purple Tint
     "border_quiz": "#f5d0fe",
 }
 
-# Register Devanagari Font
+# Register Devanagari Font (Mukta - supports full Latin + Devanagari scripts natively)
 FONT_REGISTERED = False
 DEVANAGARI_FONT = "Helvetica"
+DEVANAGARI_BOLD = "Helvetica-Bold"
 
-for candidate in [
-    os.path.join(os.path.dirname(__file__), "..", "fonts", "NotoSansDevanagari-Regular.ttf"),
-    "fonts/NotoSansDevanagari-Regular.ttf",
-    "C:/Windows/Fonts/Nirmala.ttf",
-    "C:/Windows/Fonts/mangal.ttf",
-]:
-    if os.path.exists(candidate):
+mukta_pairs = [
+    (
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fonts", "Mukta-Regular.ttf")),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fonts", "Mukta-Bold.ttf")),
+    ),
+    (
+        os.path.abspath("fonts/Mukta-Regular.ttf"),
+        os.path.abspath("fonts/Mukta-Bold.ttf"),
+    ),
+]
+
+for reg_path, bold_path in mukta_pairs:
+    if os.path.exists(reg_path):
         try:
-            pdfmetrics.registerFont(TTFont("Devanagari", candidate))
+            pdfmetrics.registerFont(TTFont("Devanagari", reg_path))
+            if os.path.exists(bold_path):
+                pdfmetrics.registerFont(TTFont("Devanagari-Bold", bold_path))
+                pdfmetrics.registerFontFamily("Devanagari", normal="Devanagari", bold="Devanagari-Bold", italic="Devanagari", boldItalic="Devanagari-Bold")
+                DEVANAGARI_BOLD = "Devanagari-Bold"
+            else:
+                pdfmetrics.registerFontFamily("Devanagari", normal="Devanagari", bold="Devanagari", italic="Devanagari", boldItalic="Devanagari")
+                DEVANAGARI_BOLD = "Devanagari"
             FONT_REGISTERED = True
             DEVANAGARI_FONT = "Devanagari"
-            logger.info(f"Registered Devanagari font from {candidate}")
+            logger.info(f"Registered Devanagari font from {reg_path}")
             break
         except Exception as e:
-            logger.warning(f"Could not load font {candidate}: {e}")
+            logger.warning(f"Could not load Mukta font: {e}")
+
+if not FONT_REGISTERED:
+    # Fallback to NotoSans or Windows fonts
+    for candidate in [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fonts", "NotoSansDevanagari-Regular.ttf")),
+        os.path.abspath("fonts/NotoSansDevanagari-Regular.ttf"),
+        "C:/Windows/Fonts/Nirmala.ttf",
+        "C:/Windows/Fonts/mangal.ttf",
+    ]:
+        if os.path.exists(candidate):
+            try:
+                pdfmetrics.registerFont(TTFont("Devanagari", candidate))
+                pdfmetrics.registerFontFamily("Devanagari", normal="Devanagari", bold="Devanagari", italic="Devanagari", boldItalic="Devanagari")
+                FONT_REGISTERED = True
+                DEVANAGARI_FONT = "Devanagari"
+                DEVANAGARI_BOLD = "Devanagari"
+                logger.info(f"Registered fallback font from {candidate}")
+                break
+            except Exception as e:
+                logger.warning(f"Could not load fallback font: {e}")
+
+
+def has_devanagari(text: str) -> bool:
+    """Check if string contains any Devanagari characters (U+0900 - U+097F)."""
+    return bool(re.search(r"[\u0900-\u097f]", text))
 
 
 class NumberedCanvas(pdfcanvas.Canvas):
@@ -103,7 +146,7 @@ class NumberedCanvas(pdfcanvas.Canvas):
         self.line(16 * mm, 14 * mm, A4[0] - 16 * mm, 14 * mm)
         self.setFont("Helvetica", 8)
         self.setFillColor(HexColor(PALETTE["light_gray"]))
-        self.drawString(16 * mm, 9 * mm, "The Hindu • LiveMint • Lokmat • DGIPR • GKToday")
+        self.drawString(16 * mm, 9 * mm, "The Hindu | LiveMint | Lokmat | Mahasamvad | GKToday")
 
         page_str = f"Page {self._pageNumber} of {total_pages}"
         self.setFont("Helvetica-Bold", 8)
@@ -113,7 +156,7 @@ class NumberedCanvas(pdfcanvas.Canvas):
 
 
 class PDFExporter:
-    """Compiles DailyDigest into high-yield magazine-quality PDFs."""
+    """Compiles DailyDigest into high-yield magazine-quality PDFs with unabridged text."""
 
     def __init__(self, output_dir: str = "output/pdf"):
         self.output_dir = output_dir
@@ -121,14 +164,14 @@ class PDFExporter:
         self.styles = self._init_styles()
 
     def _init_styles(self):
-        base = getSampleStyleSheet()
         norm_font = DEVANAGARI_FONT if FONT_REGISTERED else "Helvetica"
         bold_font = DEVANAGARI_FONT if FONT_REGISTERED else "Helvetica-Bold"
 
         return {
+            # English styles
             "CoverTitle": ParagraphStyle(
                 "CoverTitle",
-                fontName=bold_font,
+                fontName="Helvetica-Bold",
                 fontSize=26,
                 leading=32,
                 textColor=HexColor(PALETTE["primary"]),
@@ -137,60 +180,91 @@ class PDFExporter:
             "CoverSubtitle": ParagraphStyle(
                 "CoverSubtitle",
                 fontName=norm_font,
-                fontSize=13,
-                leading=18,
+                fontSize=12,
+                leading=17,
                 textColor=HexColor(PALETTE["secondary"]),
                 alignment=TA_CENTER,
             ),
             "SectionHeader": ParagraphStyle(
                 "SectionHeader",
                 fontName=bold_font,
-                fontSize=16,
-                leading=22,
-                textColor=HexColor(PALETTE["primary"]),
-                spaceAfter=6,
-            ),
-            "ArticleTitle": ParagraphStyle(
-                "ArticleTitle",
-                fontName=bold_font,
-                fontSize=13,
-                leading=17,
+                fontSize=15,
+                leading=20,
                 textColor=HexColor(PALETTE["primary"]),
                 spaceAfter=4,
             ),
-            "Meta": ParagraphStyle(
-                "Meta",
+            "ArticleTitleEn": ParagraphStyle(
+                "ArticleTitleEn",
+                fontName="Helvetica-Bold",
+                fontSize=12.5,
+                leading=16.5,
+                textColor=HexColor(PALETTE["primary"]),
+                spaceAfter=3,
+            ),
+            "ArticleTitleMr": ParagraphStyle(
+                "ArticleTitleMr",
                 fontName=norm_font,
-                fontSize=8,
-                leading=11,
+                fontSize=13,
+                leading=18,
+                textColor=HexColor(PALETTE["primary"]),
+                spaceAfter=3,
+            ),
+            "MetaEn": ParagraphStyle(
+                "MetaEn",
+                fontName="Helvetica",
+                fontSize=8.5,
+                leading=12,
                 textColor=HexColor(PALETTE["muted"]),
             ),
-            "Body": ParagraphStyle(
-                "Body",
+            "MetaMr": ParagraphStyle(
+                "MetaMr",
                 fontName=norm_font,
+                fontSize=8.5,
+                leading=12.5,
+                textColor=HexColor(PALETTE["muted"]),
+            ),
+            "PointersEn": ParagraphStyle(
+                "PointersEn",
+                fontName="Helvetica",
+                fontSize=8.5,
+                leading=12,
+                textColor=HexColor(PALETTE["primary"]),
+            ),
+            "PointersMr": ParagraphStyle(
+                "PointersMr",
+                fontName=norm_font,
+                fontSize=8.5,
+                leading=12.5,
+                textColor=HexColor(PALETTE["primary"]),
+            ),
+            "BodyEn": ParagraphStyle(
+                "BodyEn",
+                fontName="Helvetica",
                 fontSize=9.5,
-                leading=14,
+                leading=14.5,
                 textColor=HexColor(PALETTE["text"]),
                 alignment=TA_JUSTIFY,
+                spaceAfter=7,
             ),
-            "Bullet": ParagraphStyle(
-                "Bullet",
+            "BodyMr": ParagraphStyle(
+                "BodyMr",
                 fontName=norm_font,
-                fontSize=9,
-                leading=13,
+                fontSize=9.5,
+                leading=15.5,
                 textColor=HexColor(PALETTE["text"]),
-                leftIndent=10,
+                alignment=TA_JUSTIFY,
+                spaceAfter=7,
             ),
             "QuizQuestion": ParagraphStyle(
                 "QuizQuestion",
-                fontName=norm_font,
+                fontName="Helvetica-Bold",
                 fontSize=9.5,
                 leading=13.5,
                 textColor=HexColor(PALETTE["primary"]),
             ),
             "QuizOption": ParagraphStyle(
                 "QuizOption",
-                fontName=norm_font,
+                fontName="Helvetica",
                 fontSize=8.5,
                 leading=12,
                 textColor=HexColor(PALETTE["text"]),
@@ -198,10 +272,17 @@ class PDFExporter:
             ),
             "Answer": ParagraphStyle(
                 "Answer",
-                fontName=bold_font,
+                fontName="Helvetica-Bold",
                 fontSize=8.5,
                 leading=12,
                 textColor=HexColor(PALETTE["success"]),
+            ),
+            "QuizMeta": ParagraphStyle(
+                "QuizMeta",
+                fontName="Helvetica",
+                fontSize=8,
+                leading=11,
+                textColor=HexColor(PALETTE["muted"]),
             ),
         }
 
@@ -233,10 +314,10 @@ class PDFExporter:
         return filepath
 
     def _build_cover_page(self, story: list, digest: DailyDigest):
-        story.append(Spacer(1, 40 * mm))
+        story.append(Spacer(1, 35 * mm))
         story.append(Paragraph("CIVIL SERVICES DAILY REVIEW", self.styles["CoverTitle"]))
         story.append(Spacer(1, 4 * mm))
-        story.append(Paragraph(f"UPSC & MPSC Comprehensive Editorial Compendium", self.styles["CoverSubtitle"]))
+        story.append(Paragraph("UPSC & MPSC Comprehensive Editorial Compendium", self.styles["CoverSubtitle"]))
         story.append(Spacer(1, 2 * mm))
         story.append(Paragraph(f"<b>Edition Date:</b> {digest.date}", self.styles["CoverSubtitle"]))
         story.append(Spacer(1, 15 * mm))
@@ -246,23 +327,25 @@ class PDFExporter:
         for a in digest.articles:
             src_counts[a.source] = src_counts.get(a.source, 0) + 1
 
+        norm_font = DEVANAGARI_FONT if FONT_REGISTERED else "Helvetica"
         summary_data = [
-            ["Source / Publisher", "Type", "Articles"],
-            ["The Hindu", "Editorials & Op-Ed", str(src_counts.get("The Hindu", 0))],
-            ["LiveMint", "Opinion & Economy", str(src_counts.get("LiveMint", 0))],
-            ["Lokmat (लोकमत)", "अग्रलेख व विशेष लेख", str(src_counts.get("Lokmat", 0))],
-            ["Mahasamvad (DGIPR)", "शासकीय निर्णय व धोरणे", str(src_counts.get("Mahasamvad (DGIPR)", 0))],
-            ["GKToday", "Current Affairs & MCQs", f"{src_counts.get('GKToday', 0)} CA + {len(digest.quizzes)} MCQs"],
+            ["Source / Publisher", "Coverage & Type", "Articles"],
+            ["The Hindu", "Editorials & Op-Ed (GS-2, GS-3)", str(src_counts.get("The Hindu", 0))],
+            ["LiveMint", "Opinion & Economy (GS-3)", str(src_counts.get("LiveMint", 0))],
+            ["Lokmat (लोकमत)", "अग्रलेख व विशेष लेख (MPSC)", str(src_counts.get("Lokmat", 0))],
+            ["Mahasamvad (DGIPR)", "शासकीय निर्णय व धोरणे (MPSC)", str(src_counts.get("Mahasamvad (DGIPR)", 0))],
+            ["GKToday", "Current Affairs & Quiz Bank", f"{src_counts.get('GKToday', 0)} CA + {len(digest.quizzes)} MCQs"],
         ]
         if src_counts.get("Indian Express", 0) > 0:
             summary_data.insert(2, ["Indian Express", "Explained & Ideas", str(src_counts.get("Indian Express", 0))])
         if src_counts.get("Loksatta", 0) > 0:
             summary_data.insert(3, ["Loksatta (लोकसत्ता)", "संपादकीय व विश्लेषक", str(src_counts.get("Loksatta", 0))])
-        t = Table(summary_data, colWidths=[65 * mm, 65 * mm, 40 * mm])
+
+        t = Table(summary_data, colWidths=[62 * mm, 72 * mm, 44 * mm])
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), HexColor(PALETTE["primary"])),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, -1), DEVANAGARI_FONT if FONT_REGISTERED else "Helvetica"),
+            ("FONTNAME", (0, 0), (-1, -1), norm_font),
             ("FONTSIZE", (0, 0), (-1, -1), 9),
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
             ("GRID", (0, 0), (-1, -1), 0.5, HexColor(PALETTE["border"])),
@@ -270,78 +353,123 @@ class PDFExporter:
             ("TOPPADDING", (0, 0), (-1, -1), 6),
         ]))
         story.append(t)
-        story.append(Spacer(1, 25 * mm))
+        story.append(Spacer(1, 20 * mm))
 
     def _build_articles_section(self, story: list, digest: DailyDigest):
-        # Group articles
+        # Group articles by GS paper
         grouped = {}
         for a in digest.articles:
             grouped.setdefault(a.gs_paper, []).append(a)
 
+        paper_titles = {
+            "GS-2": "UPSC GS-2 Focus: Governance, Constitution, Polity & International Relations",
+            "GS-3": "UPSC GS-3 Focus: Economy, Agriculture, Science & Technology, Environment",
+            "GS-1": "UPSC GS-1 Focus: Indian Heritage, History, Geography & Society",
+            "GS-4": "UPSC GS-4 Focus: Ethics, Integrity & Aptitude",
+            "MPSC-State": "MPSC राज्यसेवा विशेष: महाराष्ट्र शासन निर्णय, प्रशासन व अग्रलेख",
+        }
         order = ["GS-2", "GS-3", "GS-1", "GS-4", "MPSC-State"]
         
         for paper in order:
             if paper not in grouped:
                 continue
             arts = grouped[paper]
-            display_name = "MPSC विशेष (लोकसत्ता संपादकीय)" if paper == "MPSC-State" else f"UPSC {paper} Focus"
+            section_title = paper_titles.get(paper, f"UPSC {paper} Focus")
             
-            story.append(Paragraph(display_name, self.styles["SectionHeader"]))
-            story.append(HRFlowable(width="100%", thickness=1.5, color=HexColor(PALETTE["secondary"]), spaceAfter=10))
+            story.append(Paragraph(html.escape(section_title), self.styles["SectionHeader"]))
+            story.append(HRFlowable(width="100%", thickness=1.5, color=HexColor(PALETTE["secondary"]), spaceAfter=12))
 
             for art in arts:
-                card_data = []
-                # Header row
-                title_p = Paragraph(f"<b>{art.title}</b>", self.styles["ArticleTitle"])
-                meta_p = Paragraph(f"<b>{art.source}</b> | {art.author or 'Staff'} | <i>{art.published_date}</i> | Focus: {art.exam_stage} ({art.gs_paper})", self.styles["Meta"])
-                card_data.append([title_p])
-                card_data.append([meta_p])
+                is_mr = art.language == "mr" or has_devanagari(art.title) or has_devanagari(art.full_text[:300] if art.full_text else "")
+                
+                title_style = self.styles["ArticleTitleMr"] if is_mr else self.styles["ArticleTitleEn"]
+                meta_style = self.styles["MetaMr"] if is_mr else self.styles["MetaEn"]
+                body_style = self.styles["BodyMr"] if is_mr else self.styles["BodyEn"]
+                pointers_style = self.styles["PointersMr"] if is_mr else self.styles["PointersEn"]
 
-                # Bullets
-                if art.summary_bullets:
-                    b_texts = "<br/>".join([f"• {b}" for b in art.summary_bullets[:3]])
-                    card_data.append([Paragraph(f"<b>Core Takeaways:</b><br/>{b_texts}", self.styles["Bullet"])])
+                # 1. Header Banner Card
+                header_elements = []
+                escaped_title = html.escape(art.title)
+                header_elements.append(Paragraph(f"<b>{escaped_title}</b>", title_style))
 
-                # Prelims facts
+                escaped_src = html.escape(art.source)
+                escaped_author = html.escape(art.author or "Editorial Staff")
+                escaped_date = html.escape(art.published_date or digest.date)
+                escaped_stage = html.escape(art.exam_stage or "Prelims & Mains")
+                escaped_paper = html.escape(art.gs_paper)
+
+                meta_text = (
+                    f"<b>{escaped_src}</b> | {escaped_author} | <i>{escaped_date}</i> | "
+                    f"Exam: <b>{escaped_paper}</b> ({escaped_stage})"
+                )
+                header_elements.append(Paragraph(meta_text, meta_style))
+
+                if art.syllabus_topics:
+                    clean_topics = html.escape(" • ".join(art.syllabus_topics[:4]))
+                    header_elements.append(Paragraph(f"<b>Syllabus Topics:</b> {clean_topics}", meta_style))
+
                 if art.prelims_pointers:
-                    p_texts = " | ".join(art.prelims_pointers[:3])
-                    card_data.append([Paragraph(f"<b>📌 Prelims Pointers:</b> {p_texts}", self.styles["Meta"])])
+                    clean_pointers = html.escape(" | ".join(art.prelims_pointers[:3]))
+                    header_elements.append(Paragraph(f"<b>📌 Prelims Pointers:</b> {clean_pointers}", pointers_style))
 
-                bg_color = HexColor(PALETTE["bg_marathi"]) if art.language == "mr" else HexColor("#f8fafc")
-                border_color = HexColor(PALETTE["border_marathi"]) if art.language == "mr" else HexColor(PALETTE["border"])
+                bg_color = HexColor(PALETTE["bg_marathi"]) if is_mr else HexColor(PALETTE["bg_banner_en"])
+                border_color = HexColor(PALETTE["border_marathi"]) if is_mr else HexColor(PALETTE["border_banner_en"])
 
-                card_table = Table(card_data, colWidths=[178 * mm])
+                card_table = Table([[elem] for elem in header_elements], colWidths=[178 * mm])
                 card_table.setStyle(TableStyle([
                     ("BACKGROUND", (0, 0), (-1, -1), bg_color),
                     ("BOX", (0, 0), (-1, -1), 0.8, border_color),
-                    ("TOPPADDING", (0, 0), (-1, -1), 6),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                     ("LEFTPADDING", (0, 0), (-1, -1), 8),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 8),
                 ]))
 
-                story.append(card_table)
-                story.append(Spacer(1, 8 * mm))
+                # Keep header banner together
+                story.append(KeepTogether(card_table))
+                story.append(Spacer(1, 3 * mm))
+
+                # 2. Render Full Unabridged Article Text
+                raw_text = (art.full_text or "").strip()
+                if not raw_text and art.summary_bullets:
+                    raw_text = "\n\n".join(art.summary_bullets)
+
+                paragraphs = [p.strip() for p in raw_text.split("\n\n") if p.strip()]
+                if not paragraphs and raw_text:
+                    paragraphs = [p.strip() for p in raw_text.split("\n") if p.strip()]
+
+                for para in paragraphs:
+                    escaped_p = html.escape(para)
+                    # Convert single inner newlines to break tags
+                    escaped_p = escaped_p.replace("\n", "<br/>")
+                    story.append(Paragraph(escaped_p, body_style))
+
+                # 3. Clean divider after article
+                story.append(HRFlowable(width="100%", thickness=0.6, color=HexColor(PALETTE["border"]), spaceBefore=6, spaceAfter=12))
 
     def _build_quizzes_section(self, story: list, digest: DailyDigest, hide_answers: bool):
         story.append(Paragraph("Daily Practice MCQs (Quiz Bank)", self.styles["SectionHeader"]))
         mode_str = "Test Mode (Answers Hidden)" if hide_answers else "Study Mode (With Explanations)"
-        story.append(Paragraph(f"<b>Mode:</b> {mode_str} | Total Questions: {len(digest.quizzes)}", self.styles["Meta"]))
+        story.append(Paragraph(f"<b>Mode:</b> {mode_str} | Total Questions: {len(digest.quizzes)}", self.styles["MetaEn"]))
         story.append(HRFlowable(width="100%", thickness=1.5, color=HexColor(PALETTE["accent"]), spaceAfter=10))
 
         for q in digest.quizzes:
             q_flowables = []
-            q_flowables.append(Paragraph(f"<b>Q{q.question_num}. {q.question_text}</b>", self.styles["QuizQuestion"]))
+            esc_q = html.escape(f"Q{q.question_num}. {q.question_text}")
+            q_flowables.append(Paragraph(f"<b>{esc_q}</b>", self.styles["QuizQuestion"]))
             
             for opt_key in ["A", "B", "C", "D"]:
                 if opt_key in q.options:
-                    q_flowables.append(Paragraph(f"[{opt_key}] {q.options[opt_key]}", self.styles["QuizOption"]))
+                    esc_opt = html.escape(f"[{opt_key}] {q.options[opt_key]}")
+                    q_flowables.append(Paragraph(esc_opt, self.styles["QuizOption"]))
 
             if not hide_answers:
                 if q.correct_option:
-                    q_flowables.append(Paragraph(f"<b>Correct: [{q.correct_option}]</b>", self.styles["Answer"]))
+                    esc_ans = html.escape(f"Correct Answer: [{q.correct_option}]")
+                    q_flowables.append(Paragraph(f"<b>{esc_ans}</b>", self.styles["Answer"]))
                 if q.explanation:
-                    q_flowables.append(Paragraph(f"<i>Notes:</i> {q.explanation}", self.styles["Meta"]))
+                    esc_exp = html.escape(q.explanation)
+                    q_flowables.append(Paragraph(f"<i>Notes:</i> {esc_exp}", self.styles["QuizMeta"]))
 
             card = Table([[item] for item in q_flowables], colWidths=[178 * mm])
             card.setStyle(TableStyle([
@@ -352,3 +480,4 @@ class PDFExporter:
 
             story.append(KeepTogether(card))
             story.append(Spacer(1, 6 * mm))
+
