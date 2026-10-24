@@ -178,7 +178,8 @@ class CompendiumPipeline:
         for i, a in enumerate(filtered_articles):
             logger.info(f"[{i+1}/{len(filtered_articles)}] Enriching: {a.title[:55]} ({a.source})")
             enriched = self.enricher.enrich(a)
-            enriched_articles.append(enriched)
+            if enriched is not None:
+                enriched_articles.append(enriched)
 
         digest = DailyDigest(
             date=self.today_str,
