@@ -11,9 +11,9 @@ on:
         required: false
         default: 'all'
       pdf_engine:
-        description: 'PDF generation engine (typst, reportlab, or both)'
+        description: 'PDF generation engine (segregated, typst, reportlab, or both)'
         required: false
-        default: 'typst'
+        default: 'segregated'
       force:
         description: 'Ignore dedup cache and force run'
         required: false
@@ -41,7 +41,7 @@ jobs:
       - name: Install Typst CLI
         uses: taiki-e/install-action@v2
         with:
-          tool: typst
+          tool: typst-cli
 
       - name: Install Dependencies
         run: |
@@ -61,7 +61,7 @@ jobs:
           fi
           python main.py \
             --sources "${{ github.event.inputs.sources || 'all' }}" \
-            --pdf-engine "${{ github.event.inputs.pdf_engine || 'typst' }}" \
+            --pdf-engine "${{ github.event.inputs.pdf_engine || 'segregated' }}" \
             $FORCE_FLAG
 
       - name: Upload Daily Digest Compendium & Notes
@@ -71,7 +71,7 @@ jobs:
           name: daily-compendium-${{ github.sha }}
           path: |
             output/pdf/*.pdf
-            output/notes/*.md
+            output/notes/*
             output/data/*.json
           retention-days: 14
 
