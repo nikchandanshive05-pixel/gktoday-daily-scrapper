@@ -1,31 +1,32 @@
-# 📚 UPSC & MPSC Multi-Source Editorial & Current Affairs Engine
+# 📚 UPSC & MPSC Multi-Source Editorial & Current Affairs Compendium Engine
 
-An automated, production-grade intelligence pipeline that crawls and curates high-yield editorials and current affairs from **The Hindu**, **Indian Express**, **Loksatta (लोकसत्ता)**, and **GKToday**. 
+An automated, production-grade intelligence pipeline that crawls and curates high-yield editorials and current affairs from **The Hindu**, **Indian Express**, **Loksatta (लोकसत्ता)**, **GKToday**, and **PIB (Press Information Bureau)**.
 
-It evaluates civil services relevance, maps articles across **GS1–GS4** and **MPSC State** syllabi, generates magazine-grade bilingual PDFs (with Devanagari typography), produces **Obsidian / PKM-ready Markdown cards** with YAML frontmatter, exports structured JSON, and broadcasts to **Telegram** and **Discord**.
+It classifies civil services relevance, maps articles across **GS1–GS4** and **MPSC State** syllabi, compiles publication-grade strict black-and-white PDFs via **Typst**, generates **Obsidian / PKM-ready Markdown cards** with YAML frontmatter, exports structured JSON data, and broadcasts alerts to **Telegram** and **Discord**.
 
 ---
 
 ## ✨ Key Features
 
-- **🌐 Multi-Source Editorial Ingestion**:
+- **🌐 Multi-Source Ingestion**:
   - **The Hindu**: Lead editorials and Op-Ed perspectives.
-  - **Indian Express**: *Explained* deep-dives and *Ideas/Opinion* pieces.
-  - **Loksatta (लोकसत्ता)**: अग्रलेख, संपादकीय, अन्वयार्थ, and विश्लेषक preserved in authentic Marathi for MPSC aspirants.
+  - **Indian Express**: *Explained* deep-dives and analytical opinion columns.
+  - **Loksatta (लोकसत्ता)**: अग्रलेख, संपादकीय, and विश्लेषक preserved in authentic Marathi for MPSC aspirants.
   - **GKToday**: High-yield factual one-liners and daily practice MCQs.
+  - **PIB (Press Information Bureau)**: Official government press releases, cabinet decisions, and policy briefs.
 - **🧠 Exam Intelligence & Syllabus Mapping**:
-  - Pluggable **Google Gemini 2.5 Flash** integration (`GEMINI_API_KEY`) for automated GS Paper tagging (GS1–GS4, MPSC-State), Prelims high-yield fact extraction, and Mains arguments (Issues, Debates, Way Forward).
-  - Built-in zero-dependency **deterministic heuristic NLP fallback** when running completely offline.
-- **📄 Magazine-Grade Bilingual PDF Engine**:
-  - ReportLab-powered A4 compendium with cover page, category grouping, and running `Page X of Y` footers.
-  - Native **Devanagari Unicode font registration** (`Noto Sans Devanagari` / `Nirmala UI`) ensuring crisp rendering of Marathi text without missing glyphs.
-  - Study Mode (with answers & notes) and Test Mode (answers hidden for student self-testing).
+  - **Hybrid AI & Heuristic Engine**: Powered by Google Gemini (`GEMINI_API_KEY`) for GS1–GS4 paper classification, Prelims pointers, and Mains analytical dimensions (Issues, Arguments, Way Forward).
+  - Built-in zero-dependency **deterministic heuristic NLP fallback** when running offline.
+- **📄 Publication-Grade Typst PDF Engine**:
+  - Compiles clean, publication-grade strict black-and-white A4 compendiums adhering to academic standards (Times New Roman / Mukta Devanagari typography, 10pt text, 0.72em leading, clean organic dividers, zero decorative clutter).
+  - Study Mode and Test Mode (answers masked for student self-testing).
+  - Legacy ReportLab fallback supported.
 - **🗂️ Obsidian & PKM Markdown Exporter**:
-  - Exports structured notes per article with full YAML frontmatter (source, GS paper, tags, relevance score).
-  - Auto-generates a master `00_DAILY_INDEX.md` with wikilinks (`[[slug|title]]`) organized by syllabus papers.
+  - Structured notes per article with full YAML frontmatter (source, GS paper, tags, relevance score).
+  - Master `00_DAILY_INDEX.md` organized by GS syllabus papers with wikilinks.
 - **🚀 Multi-Channel Delivery**:
   - **Telegram Bot**: Formatted HTML editorial cards and direct PDF document attachments.
-  - **Discord Webhook**: Rich embed summaries and PDF uploads.
+  - **Discord Webhook**: Rich embed summaries and PDF attachments.
 - **⚡ Smart Deduplication & Cache**:
   - Tracks processed URLs in `output/processed.json` to prevent re-crawling duplicate articles.
 - **☁️ GitHub Actions Scheduled Automation**:
@@ -40,6 +41,7 @@ It evaluates civil services relevance, maps articles across **GS1–GS4** and **
 │                        Multi-Source Ingestion                          │
 │   • The Hindu (Editorial & Op-Ed)    • Indian Express (Explained)      │
 │   • Loksatta (संपादकीय व विश्लेषक)   • GKToday (One-Liners & Quizzes)  │
+│   • PIB (Official Press Releases & Policy Briefs)                      │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
                                     ▼
@@ -47,14 +49,14 @@ It evaluates civil services relevance, maps articles across **GS1–GS4** and **
 │                        Core Processing Engine                          │
 │   • Deduplication Filter (output/processed.json)                       │
 │   • Trafilatura Clean Text & Reader Extractor                          │
-│   • Pluggable Syllabus Enricher (Gemini 2.5 Flash / Heuristic Engine)   │
+│   • Pluggable Syllabus Enricher (Gemini Flash / Heuristic Engine)      │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
       ┌─────────────────────────────┼─────────────────────────────┐
       ▼                             ▼                             ▼
 ┌──────────────┐             ┌──────────────┐              ┌──────────────┐
-│  ReportLab   │             │   Obsidian   │              │  Structured  │
-│ Magazine PDF │             │Markdown Notes│              │  JSON Data   │
+│  Typst PDF   │             │   Obsidian   │              │  Structured  │
+│ Compendium   │             │Markdown Notes│              │  JSON Data   │
 │ (output/pdf) │             │(output/notes)│              │(output/data) │
 └──────┬───────┘             └──────┬───────┘              └──────────────┘
        │                            │
@@ -78,9 +80,7 @@ cd gktoday-daily-scrapper
 pip install -r requirements.txt
 ```
 
-### 2. Configure Environment (.env)
-
-Copy `.env.example` to `.env`:
+### 2. Configure Environment (`.env`)
 
 ```bash
 cp .env.example .env
@@ -98,76 +98,24 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 GEMINI_API_KEY=AIzaSy...
 ```
 
----
-
-## 💻 Command-Line Usage (CLI)
+### 3. Run Pipeline
 
 ```bash
-# Run full multi-source compendium (The Hindu, Indian Express, Loksatta, GKToday)
+# Default run: all sources, Typst publication PDF
 python main.py
 
-# Scrape specific sources only (e.g. The Hindu & Indian Express)
-python main.py --sources hindu,express
+# Select specific sources:
+python main.py --sources "hindu,express,loksatta,gktoday,pib"
 
-# Scrape Marathi content from Loksatta only
-python main.py --sources loksatta
+# Run in Test Mode (hide MCQ answers in PDF):
+python main.py --hide-answers
 
-# Scrape last 2 days and generate Obsidian Markdown notes only (no PDF)
-python main.py --days 2 --mode markdown-only
-
-# Generate Quiz in Test Mode (hidden answers for student self-testing)
-python main.py --sources gktoday --hide-answers
-
-# Dry-run mode (scrape and log without saving files or sending alerts)
-python main.py --dry-run
-
-# Force re-scraping (ignore deduplication cache)
+# Force re-crawl ignoring cache:
 python main.py --force
 ```
 
-### CLI Arguments Reference
+### 4. Run Unit Tests
 
-| Argument | Description | Default |
-| :--- | :--- | :--- |
-| `--sources` | Comma-separated sources: `hindu,express,loksatta,gktoday` or `all` | `all` |
-| `--days <N>` | Number of days back to scrape | `1` |
-| `--mode` | Export mode: `all`, `pdf-only`, `markdown-only`, `json-only`, `no-pdf` | `all` |
-| `--hide-answers` | Hide answers in quiz bank (Student Test Mode) | `false` |
-| `--output-dir` | Target folder for outputs (`pdf/`, `notes/`, `data/`) | `output` |
-| `--force` | Ignore deduplication cache | `false` |
-| `--dry-run` | Run without saving files or triggering notifications | `false` |
-| `--no-telegram` | Skip Telegram broadcast | `false` |
-| `--no-discord` | Skip Discord broadcast | `false` |
-
----
-
-## 📂 Output Structure
-
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
 ```
-output/
-├── pdf/
-│   └── UPSC_MPSC_Daily_Digest_YYYY-MM-DD.pdf   # Magazine-grade bilingual compendium
-├── notes/
-│   └── YYYY-MM-DD/
-│       ├── 00_DAILY_INDEX.md                  # Master index with syllabus wikilinks
-│       ├── article-slug-one.md                # Individual YAML frontmatter notes
-│       └── loksatta-marathi-article.md
-├── data/
-│   └── compendium_YYYY-MM-DD.json             # Full structured JSON export
-└── processed.json                             # Incremental deduplication cache
-```
-
----
-
-## ☁️ GitHub Actions Scheduled Automation
-
-A pre-configured GitHub Actions workflow is located at [`.github/workflows/daily_digest.yml`](.github/workflows/daily_digest.yml).
-
-To automate daily delivery:
-1. Go to your repository settings -> **Secrets and variables** -> **Actions**.
-2. Add your secrets:
-   - `TELEGRAM_BOT_TOKEN`
-   - `TELEGRAM_CHAT_ID`
-   - `DISCORD_WEBHOOK_URL`
-   - `GEMINI_API_KEY` (optional)
-3. The workflow will automatically execute daily at **06:00 AM IST** and publish the artifacts to your channels.

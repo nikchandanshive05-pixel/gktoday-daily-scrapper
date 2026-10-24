@@ -1,98 +1,96 @@
 """
-Loksatta (लोकसत्ता) Marathi Editorial and Analyst Scraper.
-Extracts daily अग्रलेख, अन्वयार्थ, and विश्लेषक articles for MPSC aspirants.
-Uses resilient network headers with Googlebot crawler fallbacks to bypass Cloudflare.
+Loksatta Scraper for Marathi Editorials, Agralekh, and Vishleshak.
+Extracts high-yield articles for MPSC Civil Services preparation.
 """
+import time
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import List, Set
+from datetime import datetime, timezone
+from typing import List
+
+import requests
 from bs4 import BeautifulSoup
+import trafilatura
 
 from core.base_scraper import BaseScraper
 from core.models import Article
-from core.network import fetch_html, extract_clean_text
 
 logger = logging.getLogger("loksatta")
 
-SECTIONS = [
-    ("संपादकीय", "https://www.loksatta.com/sampadkiya/"),
-    ("विश्लेषक", "https://www.loksatta.com/vishesh/"),
-]
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
 
 
 class LoksattaScraper(BaseScraper):
-    """Scraper for Marathi editorials and state explainer articles from Loksatta."""
+    """Scraper for Loksatta Marathi editorials (अग्रलेख / संपादकीय)."""
 
-    def __init__(self):
+    def __init__(self, request_delay: float = 0.5):
         super().__init__(name="Loksatta", source_id="loksatta")
+        self.base_url = "https://www.loksatta.com"
+        self.request_delay = request_delay
 
     def fetch_articles(self, days: int = 1) -> List[Article]:
         articles: List[Article] = []
-        seen_urls: Set[str] = set()
-        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        editorial_url = f"{self.base_url}/editorial/"
 
-        for cat_name, section_url in SECTIONS:
-            html = fetch_html(section_url)
-            if not html:
-                logger.warning(f"Failed to fetch Loksatta section {section_url}")
-                continue
+        logger.info(f"Fetching Loksatta editorial index from {editorial_url}...")
+        try:
+            resp = requests.get(editorial_url, headers=HEADERS, timeout=12)
+            if resp.status_code != 200:
+                logger.error(f"Loksatta returned HTTP {resp.status_code}")
+                return []
 
-            soup = BeautifulSoup(html, "html.parser")
-            candidates = []
+            soup = BeautifulSoup(resp.text, "html.parser")
+            found_links = []
 
-            # Find article hyperlinks within the section
-            for a_tag in soup.find_all("a", href=True):
-                href = a_tag["href"].split("?")[0].rstrip("/") + "/"
-                text = a_tag.get_text().strip()
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if "/editorial/" in href and href != editorial_url:
+                    text = a.get_text(strip=True)
+                    if len(text) > 10 and not any(href == item[1] for item in found_links):
+                        found_links.append((text, href))
 
-                if href.startswith("https://www.loksatta.com/") and len(text) > 15:
-                    if "/sampadkiya/" in href or "/vishesh/" in href:
-                        if href not in seen_urls and href != section_url.rstrip("/") + "/":
-                            seen_urls.add(href)
-                            candidates.append((href, text))
+            today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-            logger.info(f"Discovered {len(candidates)} candidate articles in Loksatta {cat_name}.")
-
-            # Extract content for candidate articles per section
-            for link, preliminary_title in candidates[:10]:
-                art_html = fetch_html(link)
-                if not art_html:
-                    continue
-
-                body = extract_clean_text(art_html)
-                if not body or len(body.strip()) < 150:
-                    continue
-
-                # Extract precise title and date from article DOM
-                final_title = preliminary_title
-                pub_date = today_str
+            for title_text, url in found_links[:10]:
                 try:
-                    art_soup = BeautifulSoup(art_html, "html.parser")
-                    h1 = art_soup.find("h1")
-                    if h1 and len(h1.get_text(strip=True)) > 8:
-                        final_title = h1.get_text(strip=True)
+                    time.sleep(self.request_delay)
+                    downloaded = trafilatura.fetch_url(url)
+                    if not downloaded:
+                        continue
+                    text = trafilatura.extract(downloaded)
+                    if not text or len(text) < 150:
+                        continue
 
-                    time_meta = (
-                        art_soup.find("meta", property="article:published_time")
-                        or art_soup.find("meta", attrs={"name": "publish-date"})
+                    art_soup = BeautifulSoup(downloaded, "html.parser")
+                    author = None
+                    auth_tag = art_soup.find("div", class_=lambda c: c and "author" in c)
+                    if auth_tag:
+                        author = auth_tag.get_text(strip=True)
+
+                    articles.append(
+                        Article(
+                            title=title_text,
+                            url=url,
+                            source="Loksatta",
+                            published_date=today_str,
+                            full_text=text.strip(),
+                            language="mr",
+                            author=author,
+                            category="संपादकीय (Editorial)",
+                            gs_paper="MPSC-State",
+                        )
                     )
-                    if time_meta and time_meta.get("content"):
-                        pub_date = time_meta["content"][:10]
-                except Exception:
-                    pass
+                except Exception as ex:
+                    logger.warning(f"Error extracting Loksatta article {url}: {ex}")
 
-                art = Article(
-                    title=final_title,
-                    url=link,
-                    source="Loksatta",
-                    published_date=pub_date,
-                    full_text=body.strip(),
-                    language="mr",
-                    author="लोकसत्ता संपादकीय मंडळ",
-                    category=cat_name,
-                    gs_paper="MPSC-State",
-                )
-                articles.append(art)
+        except Exception as e:
+            logger.error(f"Error scraping Loksatta: {e}")
 
-        logger.info(f"Loksatta Scraper extracted {len(articles)} Marathi articles.")
+        logger.info(f"Loksatta scraped {len(articles)} Marathi editorials.")
         return articles

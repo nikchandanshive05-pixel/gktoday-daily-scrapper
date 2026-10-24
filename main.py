@@ -2,7 +2,8 @@
 """
 Civil Services Daily Compendium & Multi-Source Editorial Pipeline
 UPSC & MPSC Daily Review Suite
-Sources: The Hindu, Indian Express, Loksatta (लोकसत्ता), and GKToday
+Curated Sources: The Hindu, Indian Express, Loksatta (लोकसत्ता), GKToday, and PIB
+Exporters: Typst (Publication-Grade Strict B&W PDF), ReportLab, Obsidian Markdown, Structured JSON
 """
 import os
 import sys
@@ -16,8 +17,6 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-
-# Load environment variables
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -31,9 +30,8 @@ from sources.the_hindu import HinduScraper
 from sources.indian_express import IndianExpressScraper
 from sources.loksatta import LoksattaScraper
 from sources.gktoday import GKTodayScraper
-from sources.livemint import LiveMintScraper
-from sources.lokmat import LokmatScraper
-from sources.mahasamvad import MahasamvadScraper
+from sources.pib import PIBScraper
+from exporters.typst_engine import TypstPDFEngine
 from exporters.pdf_engine import PDFExporter
 from exporters.markdown_engine import MarkdownExporter
 from exporters.json_engine import JSONExporter
@@ -50,20 +48,27 @@ logger = logging.getLogger("compendium_pipeline")
 
 def build_cli() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="UPSC & MPSC Multi-Source Editorial Digest & Compendium Engine",
+        description="UPSC & MPSC Multi-Source Editorial Digest & Publication-Grade Compendium Engine",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "--sources",
         type=str,
         default="all",
-        help="Comma-separated sources to scrape: 'hindu,express,loksatta,gktoday' or 'all'",
+        help="Comma-separated sources to scrape: 'hindu,express,loksatta,gktoday,pib' or 'all'",
     )
     parser.add_argument(
         "--days",
         type=int,
         default=1,
         help="Number of days back to scrape",
+    )
+    parser.add_argument(
+        "--pdf-engine",
+        type=str,
+        choices=["typst", "reportlab", "both"],
+        default="typst",
+        help="PDF generation engine to use (typst = publication-grade strict B&W)",
     )
     parser.add_argument(
         "--mode",
@@ -199,11 +204,23 @@ class CompendiumPipeline:
             md_files = md_exp.export(digest)
             logger.info(f"Generated {len(md_files)} Obsidian Markdown notes.")
 
-        # Magazine PDF Export
+        # PDF Export (Typst / ReportLab)
         if self.args.mode in ["all", "pdf-only"]:
-            pdf_exp = PDFExporter(pdf_dir)
-            pdf_path = pdf_exp.export(digest, hide_answers=self.args.hide_answers)
-            logger.info(f"Compendium PDF built at: {pdf_path}")
+            if self.args.pdf_engine in ["typst", "both"]:
+                try:
+                    typst_engine = TypstPDFEngine(output_dir=pdf_dir, fonts_dir="fonts")
+                    pdf_path = typst_engine.generate_digest_pdf(digest)
+                    logger.info(f"Publication-Grade Typst PDF built at: {pdf_path}")
+                except Exception as e:
+                    logger.error(f"Typst compilation failed: {e}. Falling back to ReportLab...")
+                    pdf_exp = PDFExporter(pdf_dir)
+                    pdf_path = pdf_exp.export(digest, hide_answers=self.args.hide_answers)
+
+            if self.args.pdf_engine == "reportlab" or (self.args.pdf_engine == "both" and not pdf_path):
+                pdf_exp = PDFExporter(pdf_dir)
+                rl_pdf = pdf_exp.export(digest, hide_answers=self.args.hide_answers)
+                pdf_path = pdf_path or rl_pdf
+                logger.info(f"ReportLab PDF built at: {rl_pdf}")
 
         # 5. Multi-Channel Notifications
         if not self.args.no_telegram:
@@ -231,12 +248,10 @@ class CompendiumPipeline:
     def _resolve_sources(self) -> list:
         src_map = {
             "hindu": HinduScraper,
-            "livemint": LiveMintScraper,
-            "lokmat": LokmatScraper,
-            "mahasamvad": MahasamvadScraper,
             "express": IndianExpressScraper,
             "loksatta": LoksattaScraper,
             "gktoday": GKTodayScraper,
+            "pib": PIBScraper,
         }
 
         requested = [s.strip().lower() for s in self.args.sources.split(",")]

@@ -1,45 +1,32 @@
-name: Civil Services Daily Compendium & Multi-Source Digest
+name: Daily UPSC & MPSC Digest & Compendium Engine
 
 on:
   schedule:
-    - cron: "30 0 * * *"   # Runs daily at 06:00 AM IST (00:30 UTC)
+    # Runs daily at 00:30 UTC (06:00 AM IST)
+    - cron: '30 0 * * *'
   workflow_dispatch:
     inputs:
       sources:
-        description: "Sources to scrape ('hindu,livemint,lokmat,mahasamvad,express,loksatta,gktoday' or 'all')"
+        description: 'Sources to scrape (hindu,express,loksatta,gktoday,pib or all)'
         required: false
-        default: "all"
-      days:
-        description: "Number of days back to scrape (default: 1)"
+        default: 'all'
+      pdf_engine:
+        description: 'PDF generation engine (typst, reportlab, or both)'
         required: false
-        default: "1"
-      mode:
-        description: "Output format mode"
-        required: false
-        default: "all"
-        type: choice
-        options:
-          - all
-          - pdf-only
-          - markdown-only
-          - json-only
-          - no-pdf
-      hide_answers:
-        description: "Hide answers in quiz bank for test mode"
-        required: false
-        default: false
-        type: boolean
+        default: 'typst'
       force:
-        description: "Force re-scraping (ignore deduplication cache)"
+        description: 'Ignore dedup cache and force run'
         required: false
-        default: false
         type: boolean
+        default: false
+
+concurrency:
+  group: daily-digest-pipeline
+  cancel-in-progress: false
 
 jobs:
-  scrape-enrich-deliver:
-    name: Scrape Multi-Source Editorials & Deliver Compendium
+  run-pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
 
     steps:
       - name: Checkout Repository
@@ -48,49 +35,54 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-          cache: "pip"
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Typst CLI
+        uses: taiki-e/install-action@v2
+        with:
+          tool: typst
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Cache Deduplication History
-        uses: actions/cache@v4
-        with:
-          path: output/processed.json
-          key: compendium-processed-${{ github.run_id }}
-          restore-keys: compendium-processed-
-
-      - name: Run Multi-Source Pipeline
+      - name: Execute Compendium Pipeline
         env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          PYTHONIOENCODING: "utf-8"
         run: |
-          EXTRA_ARGS=""
-          if [ "${{ github.event.inputs.hide_answers }}" = "true" ]; then
-            EXTRA_ARGS="$EXTRA_ARGS --hide-answers"
-          fi
+          FORCE_FLAG=""
           if [ "${{ github.event.inputs.force }}" = "true" ]; then
-            EXTRA_ARGS="$EXTRA_ARGS --force"
+            FORCE_FLAG="--force"
           fi
           python main.py \
             --sources "${{ github.event.inputs.sources || 'all' }}" \
-            --days "${{ github.event.inputs.days || '1' }}" \
-            --mode "${{ github.event.inputs.mode || 'all' }}" \
-            $EXTRA_ARGS
+            --pdf-engine "${{ github.event.inputs.pdf_engine || 'typst' }}" \
+            $FORCE_FLAG
 
-      - name: Upload Daily Digest Artifacts (PDF, Markdown, JSON)
-        if: always()
+      - name: Upload Daily Digest Compendium & Notes
         uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: upsc-mpsc-compendium-${{ github.run_id }}
+          name: daily-compendium-${{ github.sha }}
           path: |
             output/pdf/*.pdf
-            output/notes/**
+            output/notes/*.md
             output/data/*.json
           retention-days: 14
+
+      - name: Commit Updated Deduplication Cache
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add output/processed.json || true
+          if git diff --staged --quiet; then
+            echo "No dedup cache changes to commit."
+          else
+            git commit -m "chore(cache): update daily processed dedup records [skip ci]"
+            git push
+          fi

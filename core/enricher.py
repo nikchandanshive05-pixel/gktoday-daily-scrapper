@@ -1,7 +1,7 @@
 """
 Exam intelligence enricher: UPSC & MPSC syllabus classification,
 Prelims facts extraction, and Mains arguments summarizer.
-Supports Google Gemini API with seamless rule-based heuristic fallback.
+Supports Google Gemini API (gemini-2.5-flash / gemini-1.5-flash) with seamless rule-based heuristic fallback.
 """
 import os
 import re
@@ -49,21 +49,32 @@ class SyllabusEnricher:
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        self.has_ai = False
+        self.client_type = None
         self.client = None
 
         if self.api_key:
+            # Try official google-genai
             try:
                 from google import genai
                 self.client = genai.Client(api_key=self.api_key)
-                self.has_ai = True
-                logger.info("Gemini AI API initialized for syllabus enrichment.")
-            except Exception as e:
-                logger.warning(f"Failed to initialize Gemini AI client: {e}. Using heuristic engine.")
+                self.client_type = "google-genai"
+                logger.info("Initialized google-genai Client for syllabus enrichment.")
+            except ImportError:
+                # Try google-generativeai
+                try:
+                    import google.generativeai as genai_legacy
+                    genai_legacy.configure(api_key=self.api_key)
+                    self.client = genai_legacy.GenerativeModel("gemini-1.5-flash")
+                    self.client_type = "google-generativeai"
+                    logger.info("Initialized google.generativeai GenerativeModel.")
+                except Exception as e:
+                    logger.warning(f"Could not load Gemini API libraries: {e}")
+            except Exception as ex:
+                logger.warning(f"Gemini client initialization failed: {ex}")
 
     def enrich(self, article: Article) -> Article:
         """Enrich a single article with syllabus classification and high-yield study points."""
-        if self.has_ai:
+        if self.client_type:
             try:
                 return self._enrich_with_ai(article)
             except Exception as e:
@@ -72,7 +83,7 @@ class SyllabusEnricher:
         return self._enrich_with_heuristics(article)
 
     def _enrich_with_ai(self, article: Article) -> Article:
-        """Use Gemini Flash to generate high-yield UPSC/MPSC structured analysis."""
+        """Use Gemini to generate high-yield UPSC/MPSC structured analysis."""
         prompt = f"""
 You are an expert UPSC Civil Services and MPSC mentor. Analyze the following article and output a strict JSON response.
 Article Title: {article.title}
@@ -96,11 +107,17 @@ Return JSON with this EXACT structure:
 If the article is in Marathi (Loksatta), ensure the summary and analysis points accurately reflect the regional context and can be understood by Marathi/English MPSC aspirants.
 Do not include markdown fences in the response, only pure JSON.
 """
-        response = self.client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-        )
-        text = response.text.strip()
+        text = ""
+        if self.client_type == "google-genai":
+            response = self.client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+            )
+            text = response.text.strip()
+        elif self.client_type == "google-generativeai":
+            response = self.client.generate_content(prompt)
+            text = response.text.strip()
+
         # Clean potential markdown fences
         if text.startswith("```"):
             text = re.sub(r"^```(?:json)?\n?", "", text)
@@ -144,12 +161,12 @@ Do not include markdown fences in the response, only pure JSON.
         # 3. Detect Prelims vs Mains focus
         prelims_clues = ["commission", "treaty", "report", "index", "summit", "satellite", "species", "sanctuary", "amendment", "article"]
         found_prelims = [p.capitalize() for p in prelims_clues if p in text_lower]
-        article.prelims_pointers = [f"Focus Area: {p}" for p in found_prelims[:3]]
+        article.prelims_pointers = [f"Key Anchor: {p}" for p in found_prelims[:3]]
 
         article.mains_arguments = {
             "Core Theme": [article.title],
             "Key Observation": sentences[1:3] if len(sentences) >= 3 else sentences[:1],
-            "Context": [f"Scraped from {article.source} under syllabus category {best_paper}."]
+            "Context": [f"Source: {article.source} | Categorized under {best_paper}."]
         }
         article.relevance_score = min(10, max(5, 5 + len(found_prelims)))
         return article
