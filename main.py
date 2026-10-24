@@ -3,7 +3,11 @@
 Civil Services Daily Compendium & Multi-Source Editorial Pipeline
 UPSC & MPSC Daily Review Suite
 Curated Sources: The Hindu, Indian Express, Loksatta (लोकसत्ता), GKToday, and PIB
-Exporters: Typst (Publication-Grade Strict B&W PDF), ReportLab, Obsidian Markdown, Structured JSON
+Exporters:
+  - Segregated Typst: Atomic Segregated Edition (अणू-वर्गीकृत संपादकीय आवृत्ती) matching reference PDF
+  - Typst: Publication-Grade Standard B&W
+  - ReportLab: Python fallback
+  - Obsidian Markdown & JSON
 """
 import os
 import sys
@@ -31,6 +35,7 @@ from sources.indian_express import IndianExpressScraper
 from sources.loksatta import LoksattaScraper
 from sources.gktoday import GKTodayScraper
 from sources.pib import PIBScraper
+from exporters.segregated_typst_engine import SegregatedTypstEngine
 from exporters.typst_engine import TypstPDFEngine
 from exporters.pdf_engine import PDFExporter
 from exporters.markdown_engine import MarkdownExporter
@@ -66,9 +71,9 @@ def build_cli() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pdf-engine",
         type=str,
-        choices=["typst", "reportlab", "both"],
-        default="typst",
-        help="PDF generation engine to use (typst = publication-grade strict B&W)",
+        choices=["segregated", "typst", "reportlab", "both"],
+        default="segregated",
+        help="PDF generation engine (segregated = Atomic Segregated Edition matching reference PDF)",
     )
     parser.add_argument(
         "--mode",
@@ -204,9 +209,13 @@ class CompendiumPipeline:
             md_files = md_exp.export(digest)
             logger.info(f"Generated {len(md_files)} Obsidian Markdown notes.")
 
-        # PDF Export (Typst / ReportLab)
+        # PDF Export
         if self.args.mode in ["all", "pdf-only"]:
-            if self.args.pdf_engine in ["typst", "both"]:
+            if self.args.pdf_engine == "segregated":
+                seg_engine = SegregatedTypstEngine(output_dir=pdf_dir, fonts_dir="fonts")
+                pdf_path = seg_engine.generate_digest_pdf(digest)
+                logger.info(f"Atomic Segregated Typst PDF built at: {pdf_path}")
+            elif self.args.pdf_engine in ["typst", "both"]:
                 try:
                     typst_engine = TypstPDFEngine(output_dir=pdf_dir, fonts_dir="fonts")
                     pdf_path = typst_engine.generate_digest_pdf(digest)
