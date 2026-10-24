@@ -1,12 +1,13 @@
 """
-Publication-Grade Segregated UPSC & MPSC Compendium Engine.
+Publication-Grade Segregated UPSC & MPSC Compendium & Editorial Engine.
 Faithfully reproduces the layout, typography, and structure of the reference edition:
-- Part 1: प्रमुख विश्लेषणात्मक घडामोडी (Tier-1 Atomic Major News Stories [CA-YYMM-XX])
-- Part 2: विषयवार स्वतंत्र सूक्ष्म घडामोडी (Subject-Grouped Atomic Micro-News [MN-YYMM-XX])
-- Part 3: संदर्भ-जोडणीकृत जलद उजळणी तक्ता (Cross-Referenced Quick Revision Grid Table)
-- Part 4: सराव बहुपर्यायी प्रश्नसंच (Verified Practice MCQs)
-- Part 5: सर्वोच्च प्राधान्य परीक्षाभिमुख संकलन (Highest-Yield Exam Synthesis)
-Fonts: Liberation Serif / Times New Roman + Noto Serif Devanagari / Mukta.
+- भाग १: प्रमुख विश्लेषणात्मक घडामोडी (Tier-1 Atomic Major News Stories [CA-YYMM-XX])
+- भाग २: संपादकीय दृष्टिक्षेप व विश्लेषक (Tier-1 In-Depth Editorial Analyses [ED-YYMM-XX])
+- भाग ३: विषयवार स्वतंत्र सूक्ष्म घडामोडी (Subject-Grouped Atomic Micro-News [MN-YYMM-XX])
+- भाग ४: संदर्भ-जोडणीकृत जलद उजळणी तक्ता (Cross-Referenced Quick Revision Grid Table)
+- भाग ५: सराव बहुपर्यायी प्रश्नसंच (Verified Practice MCQs)
+- भाग ६: सर्वोच्च प्राधान्य परीक्षाभिमुख संकलन (Highest-Yield Exam Synthesis)
+Fonts: Liberation Serif / Times New Roman + Noto Serif Devanagari / Tiro Devanagari Marathi.
 """
 import os
 import re
@@ -33,7 +34,7 @@ def escape_typst(text: Optional[str]) -> str:
 
 
 class SegregatedTypstEngine:
-    """Generates atomic segregated daily current affairs compendiums."""
+    """Generates atomic segregated daily current affairs and editorial compendiums."""
 
     def __init__(self, output_dir: str = "output/pdf", fonts_dir: str = "fonts"):
         self.output_dir = output_dir
@@ -83,22 +84,42 @@ class SegregatedTypstEngine:
         marathi_date = f"{date_obj.day} {marathi_months.get(date_obj.month, '')} {date_obj.year}"
         date_code = date_obj.strftime("%d%m")
 
-        # Partition articles into Major (Tier-1) vs Micro (Tier-2)
-        major_articles = [a for a in digest.articles if len(a.full_text) > 400 or a.source in ["The Hindu", "Indian Express", "Loksatta"]][:10]
-        micro_articles = [a for a in digest.articles if a not in major_articles]
-        if not micro_articles and len(major_articles) > 5:
-            micro_articles = major_articles[5:]
-            major_articles = major_articles[:5]
+        # Segregate articles into:
+        # 1. Editorials (The Hindu Lead/Op-Ed, Indian Express Explained/Opinion, Loksatta अग्रलेख/संपादकीय)
+        # 2. Major Current Affairs (Tier-1 CA)
+        # 3. Micro News (Brief factual updates)
+        editorials: List[Article] = []
+        major_ca: List[Article] = []
+        micro_news: List[Article] = []
+
+        for a in digest.articles:
+            is_editorial = (
+                a.source in ["The Hindu", "Indian Express"] or
+                "संपादकीय" in a.category or "अग्रलेख" in a.title or
+                a.source == "Loksatta" or
+                "Explained" in a.title or "Editorial" in a.title
+            )
+            if is_editorial and len(editorials) < 8:
+                editorials.append(a)
+            elif len(major_ca) < 8 and (len(a.full_text) > 400 or a.source in ["PIB", "GKToday"]):
+                major_ca.append(a)
+            else:
+                micro_news.append(a)
+
+        # Fallback balancing if needed
+        if not major_ca and editorials:
+            major_ca = editorials[:4]
+            editorials = editorials[4:]
 
         lines = [
-            '// Publication-Grade Segregated Current Affairs Edition',
+            '// Publication-Grade Segregated Current Affairs & Editorial Edition',
             '#set page(',
             '  paper: "a4",',
             '  margin: (top: 2.0cm, bottom: 2.0cm, left: 2.2cm, right: 2.2cm),',
             '  header: context {',
             '    [',
             '      #set text(font: ("Noto Serif Devanagari", "Tiro Devanagari Marathi", "Liberation Serif", "Times New Roman"), size: 8.5pt, fill: luma(60))',
-            f'      #grid(columns: (1fr, 1fr), align: (left, right), [दैनिक स्पर्धा परीक्षा चालू घडामोडी संकलन | {marathi_date}], [पृष्ठ #here().page()])',
+            f'      #grid(columns: (1fr, 1fr), align: (left, right), [दैनिक स्पर्धा परीक्षा चालू घडामोडी व संपादकीय संकलन | {marathi_date}], [पृष्ठ #here().page()])',
             '      #v(-2pt)',
             '      #line(length: 100%, stroke: 0.5pt + luma(140))',
             '    ]',
@@ -121,7 +142,7 @@ class SegregatedTypstEngine:
             '',
             '// Document Header',
             '#align(center)[',
-            '  #text(size: 15pt, weight: "bold")[दैनिक स्पर्धा परीक्षा चालू घडामोडी संकलन]',
+            '  #text(size: 15pt, weight: "bold")[दैनिक स्पर्धा परीक्षा चालू घडामोडी व संपादकीय संकलन]',
             '  #v(0.12cm)',
             f'  #text(size: 10.5pt, weight: "medium")[{marathi_date} | अणू-वर्गीकृत संपादकीय आवृत्ती (Atomic Segregated Edition)]',
             '  #v(0.1cm)',
@@ -130,70 +151,131 @@ class SegregatedTypstEngine:
             '  #line(length: 100%, stroke: 0.75pt + black)',
             ']',
             '',
-            '// PART 1: Major News Stories',
-            '#rect(width: 100%, fill: rgb(240, 240, 240), stroke: (top: 0.75pt + black, bottom: 0.75pt + black), inset: (x: 8pt, y: 5.5pt))[',
-            '  #text(size: 10.5pt, weight: "bold")[भाग १: प्रमुख विश्लेषणात्मक घडामोडी (Tier-1 Atomic Major News Stories)]',
-            ']',
-            '#v(0.2cm)',
         ]
 
-        # Render Major Articles
         grid_items = []
-        for idx, art in enumerate(major_articles, 1):
-            ca_id = f"CA-{date_code}-{idx:02d}"
-            title_esc = escape_typst(art.title)
-            cat_esc = escape_typst(art.category or "राष्ट्रीय घडामोडी")
-            source_esc = escape_typst(art.source)
-            url_esc = escape_typst(art.url)
 
-            # Metadata Strip
+        # =========================================================
+        # PART 1: Major News Stories (Tier-1 Atomic News)
+        # =========================================================
+        if major_ca:
             lines.extend([
-                f'#v(0.25cm)',
-                f'#text(size: 10.5pt, weight: "bold")[[{ca_id}] {title_esc}]',
-                f'#v(0.08cm)',
-                f'#rect(width: 100%, fill: rgb(247, 247, 247), stroke: (left: 1.5pt + black), inset: (x: 6pt, y: 3.5pt))[',
-                f'  #set text(size: 8.2pt)',
-                f'  *दिनांक:* {marathi_date} #h(0.4cm) | #h(0.4cm) *प्राथमिक प्रवर्ग:* {cat_esc} #h(0.4cm) | #h(0.4cm) *दुय्यम टॅग:* {art.gs_paper}, {source_esc}',
-                f']',
-                f'#v(0.12cm)',
+                '#rect(width: 100%, fill: rgb(240, 240, 240), stroke: (top: 0.75pt + black, bottom: 0.75pt + black), inset: (x: 8pt, y: 5.5pt))[',
+                '  #text(size: 10.5pt, weight: "bold")[भाग १: प्रमुख विश्लेषणात्मक घडामोडी (Tier-1 Atomic Major News Stories)]',
+                ']',
+                '#v(0.2cm)',
             ])
 
-            # What happened
-            summary_first = art.summary_bullets[0] if art.summary_bullets else art.full_text[:300]
-            lines.append(f'*काय घडले? (What happened?):* {escape_typst(summary_first)}')
-            lines.append('')
+            for idx, art in enumerate(major_ca, 1):
+                ca_id = f"CA-{date_code}-{idx:02d}"
+                title_esc = escape_typst(art.title)
+                cat_esc = escape_typst(art.category or "राष्ट्रीय घडामोडी")
+                source_esc = escape_typst(art.source)
+                url_esc = escape_typst(art.url)
 
-            # Key facts & institutions
-            if len(art.summary_bullets) > 1 or art.prelims_pointers:
-                lines.append('*मुख्य तथ्ये, आकडेवारी व संस्था (Key Facts & Institutions):*')
-                for b in art.summary_bullets[1:4]:
-                    lines.append(f'- {escape_typst(b)}')
-                for p in art.prelims_pointers:
-                    lines.append(f'- {escape_typst(p)}')
+                lines.extend([
+                    f'#v(0.25cm)',
+                    f'#text(size: 10.5pt, weight: "bold")[[{ca_id}] {title_esc}]',
+                    f'#v(0.08cm)',
+                    f'#rect(width: 100%, fill: rgb(247, 247, 247), stroke: (left: 1.5pt + black), inset: (x: 6pt, y: 3.5pt))[',
+                    f'  #set text(size: 8.2pt)',
+                    f'  *दिनांक:* {marathi_date} #h(0.4cm) | #h(0.4cm) *प्राथमिक प्रवर्ग:* {cat_esc} #h(0.4cm) | #h(0.4cm) *दुय्यम टॅग:* {art.gs_paper}, {source_esc}',
+                    f']',
+                    f'#v(0.12cm)',
+                ])
+
+                summary_first = art.summary_bullets[0] if art.summary_bullets else art.full_text[:300]
+                lines.append(f'*काय घडले? (What happened?):* {escape_typst(summary_first)}')
                 lines.append('')
 
-            # Background & Significance
-            lines.append(f'*पायाभूत संकल्पना व पार्श्वभूमी (Essential Background):* {escape_typst(art.full_text[300:750] if len(art.full_text) > 750 else art.full_text[:350])}')
-            lines.append('')
+                if len(art.summary_bullets) > 1 or art.prelims_pointers:
+                    lines.append('*मुख्य तथ्ये, आकडेवारी व संस्था (Key Facts & Institutions):*')
+                    for b in art.summary_bullets[1:4]:
+                        lines.append(f'- {escape_typst(b)}')
+                    for p in art.prelims_pointers:
+                        lines.append(f'- {escape_typst(p)}')
+                    lines.append('')
 
-            # Syllabus Linkage
-            lines.append(f'*UPSC / MPSC अभ्यासक्रम दुवा (Syllabus Linkage):* पूर्व परीक्षा: {escape_typst(art.category)}. मुख्य परीक्षा ({art.gs_paper}): {escape_typst(art.title[:80])}.')
-            lines.append('')
+                lines.append(f'*पायाभूत संकल्पना व पार्श्वभूमी (Essential Background):* {escape_typst(art.full_text[300:750] if len(art.full_text) > 750 else art.full_text[:350])}')
+                lines.append('')
 
-            # Source & Link
-            lines.append(f'#text(size: 7.8pt, fill: luma(60))[*प्राथमिक संदर्भ स्रोत:* {source_esc} | *लिंक:* #link("{url_esc}")[{url_esc}]]')
-            lines.append('')
-            lines.append('#line(length: 100%, stroke: 0.5pt + luma(180))')
+                lines.append(f'*UPSC / MPSC अभ्यासक्रम दुवा (Syllabus Linkage):* पूर्व परीक्षा: {escape_typst(art.category)}. मुख्य परीक्षा ({art.gs_paper}): {escape_typst(art.title[:80])}.')
+                lines.append('')
 
-            # Add to revision grid data
-            fact_summary = art.summary_bullets[0][:90] if art.summary_bullets else art.title[:90]
-            grid_items.append((ca_id, cat_esc, fact_summary, f"{art.gs_paper}: पूर्व व मुख्य परीक्षा"))
+                lines.append(f'#text(size: 7.8pt, fill: luma(60))[*प्राथमिक संदर्भ स्रोत:* {source_esc} | *लिंक:* #link("{url_esc}")[{url_esc}]]')
+                lines.append('')
+                lines.append('#line(length: 100%, stroke: 0.5pt + luma(180))')
 
-        # PART 2: Micro News
+                fact_summary = art.summary_bullets[0][:90] if art.summary_bullets else art.title[:90]
+                grid_items.append((ca_id, cat_esc, fact_summary, f"{art.gs_paper}: पूर्व व मुख्य परीक्षा"))
+
+        # =========================================================
+        # PART 2: DEDICATED EDITORIAL ANALYSES (Tier-1 Editorials)
+        # =========================================================
+        if editorials:
+            lines.extend([
+                '#v(0.5cm)',
+                '#rect(width: 100%, fill: rgb(240, 240, 240), stroke: (top: 0.75pt + black, bottom: 0.75pt + black), inset: (x: 8pt, y: 5.5pt))[',
+                '  #text(size: 10.5pt, weight: "bold")[भाग २: अग्रगण्य संपादकीय दृष्टिक्षेप व विश्लेषक (Tier-1 Editorial Analyses & Op-Eds)]',
+                ']',
+                '#v(0.2cm)',
+            ])
+
+            for idx, ed in enumerate(editorials, 1):
+                ed_id = f"ED-{date_code}-{idx:02d}"
+                title_esc = escape_typst(ed.title)
+                source_esc = escape_typst(ed.source)
+                paper_esc = escape_typst(ed.gs_paper)
+                url_esc = escape_typst(ed.url)
+
+                lines.extend([
+                    f'#v(0.25cm)',
+                    f'#text(size: 10.5pt, weight: "bold")[[{ed_id}] {title_esc}]',
+                    f'#v(0.08cm)',
+                    f'#rect(width: 100%, fill: rgb(247, 247, 247), stroke: (left: 1.5pt + black), inset: (x: 6pt, y: 3.5pt))[',
+                    f'  #set text(size: 8.2pt)',
+                    f'  *संपादकीय स्रोत:* {source_esc} #h(0.4cm) | #h(0.4cm) *अभ्यासक्रम पेपर:* {paper_esc} #h(0.4cm) | #h(0.4cm) *तारीख:* {marathi_date}',
+                    f']',
+                    f'#v(0.12cm)',
+                ])
+
+                # Issues & Context
+                if ed.summary_bullets:
+                    lines.append('*संपादकीय संदर्भ व मूळ विचार (Core Context & Arguments):*')
+                    for b in ed.summary_bullets[:3]:
+                        lines.append(f'- {escape_typst(b)}')
+                    lines.append('')
+                else:
+                    lines.append(f'*संपादकीय सारांश:* {escape_typst(ed.full_text[:350])}')
+                    lines.append('')
+
+                # Mains Dimensions (Issues, Debate, Way Forward)
+                if ed.mains_arguments:
+                    lines.append('*मुख्य परीक्षा विश्लेषणात्मक आयाम (Mains Analytical Dimensions):*')
+                    for dim, points in ed.mains_arguments.items():
+                        dim_title = escape_typst(dim.title())
+                        pt_str = " ; ".join([escape_typst(p) for p in points[:2]])
+                        lines.append(f'+ *{dim_title}:* {pt_str}')
+                    lines.append('')
+
+                # Way Forward & Evaluation
+                body_excerpt = ed.full_text[350:850] if len(ed.full_text) > 850 else ed.full_text[:400]
+                lines.append(f'*सविस्तर विश्लेषण व निष्कर्ष (In-Depth Editorial Analysis):* {escape_typst(body_excerpt)}...')
+                lines.append('')
+
+                lines.append(f'#text(size: 7.8pt, fill: luma(60))[*मूळ संपादकीय वाचन दुवा:* #link("{url_esc}")[{url_esc}]]')
+                lines.append('')
+                lines.append('#line(length: 100%, stroke: 0.5pt + luma(180))')
+
+                grid_items.append((ed_id, f"संपादकीय ({source_esc})", escape_typst(ed.title[:90]), f"{paper_esc}: मुख्य परीक्षा"))
+
+        # =========================================================
+        # PART 3: Micro News
+        # =========================================================
         lines.extend([
             '#v(0.5cm)',
             '#rect(width: 100%, fill: rgb(240, 240, 240), stroke: (top: 0.75pt + black, bottom: 0.75pt + black), inset: (x: 8pt, y: 5.5pt))[',
-            '  #text(size: 10.5pt, weight: "bold")[भाग २: विषयवार स्वतंत्र सूक्ष्म घडामोडी (Subject-Grouped Atomic Micro-News)]',
+            '  #text(size: 10.5pt, weight: "bold")[भाग ३: विषयवार स्वतंत्र सूक्ष्म घडामोडी (Subject-Grouped Atomic Micro-News)]',
             ']',
             '#v(0.2cm)',
         ])
@@ -206,9 +288,8 @@ class SegregatedTypstEngine:
             "गट इ: विज्ञान, तंत्रज्ञान, पर्यावरण व कृषी (Science, Environment & Agriculture)": [],
         }
 
-        # Fallback distribution if specific categories not filled
         cat_keys = list(categories_micro.keys())
-        for idx, m_art in enumerate(micro_articles, 1):
+        for idx, m_art in enumerate(micro_news[:15], 1):
             c_idx = idx % len(cat_keys)
             categories_micro[cat_keys[c_idx]].append(m_art)
 
@@ -224,15 +305,16 @@ class SegregatedTypstEngine:
                 body_snip = art.summary_bullets[0] if art.summary_bullets else art.full_text[:280]
                 lines.append(f'[{mn_id}] *{escape_typst(art.title)}:* {escape_typst(body_snip)} _(स्रोत: {escape_typst(art.source)}, {marathi_date})_')
                 lines.append('')
-                # Add to grid items
                 grid_items.append((mn_id, escape_typst(art.category or "सामान्य घडामोडी"), escape_typst(art.title[:90]), f"{art.gs_paper}: पूर्व परीक्षा"))
             lines.append('#v(0.15cm)')
 
-        # PART 3: Quick Revision Grid Table
+        # =========================================================
+        # PART 4: Quick Revision Grid Table
+        # =========================================================
         lines.extend([
             '#v(0.5cm)',
             '#rect(width: 100%, fill: rgb(240, 240, 240), stroke: (top: 0.75pt + black, bottom: 0.75pt + black), inset: (x: 8pt, y: 5.5pt))[',
-            '  #text(size: 10.5pt, weight: "bold")[भाग ३: संदर्भ-जोडणीकृत जलद उजळणी तक्ता (Cross-Referenced Quick Revision Grid)]',
+            '  #text(size: 10.5pt, weight: "bold")[भाग ४: संदर्भ-जोडणीकृत जलद उजळणी तक्ता (Cross-Referenced Quick Revision Grid)]',
             ']',
             '#v(0.2cm)',
             '#table(',
@@ -243,17 +325,19 @@ class SegregatedTypstEngine:
             '  align: (center + horizon, left + horizon, left + horizon, left + horizon),',
             '  [*बातमी क्र. (ID)*], [*प्राथमिक प्रवर्ग*], [*मुख्य परीक्षाभिमुख तथ्य (Key Revision Fact)*], [*अभ्यासक्रम संदर्भ*],',
         ])
-        for gid, gcat, gfact, gsyl in grid_items[:12]:
+        for gid, gcat, gfact, gsyl in grid_items[:14]:
             lines.append(f'  [{escape_typst(gid)}], [{escape_typst(gcat)}], [{escape_typst(gfact)}], [{escape_typst(gsyl)}],')
         lines.append(')')
         lines.append('')
 
-        # PART 4: Practice MCQs
+        # =========================================================
+        # PART 5: Practice MCQs
+        # =========================================================
         if digest.quizzes:
             lines.extend([
                 '#v(0.5cm)',
                 '#rect(width: 100%, fill: rgb(240, 240, 240), stroke: (top: 0.75pt + black, bottom: 0.75pt + black), inset: (x: 8pt, y: 5.5pt))[',
-                '  #text(size: 10.5pt, weight: "bold")[भाग ४: सराव बहुपर्यायी प्रश्नसंच (Verified Practice MCQs)]',
+                '  #text(size: 10.5pt, weight: "bold")[भाग ५: सराव बहुपर्यायी प्रश्नसंच (Verified Practice MCQs)]',
                 ']',
                 '#v(0.25cm)',
             ])
@@ -272,14 +356,17 @@ class SegregatedTypstEngine:
                     lines.append('')
                 lines.append('#v(0.2cm)')
 
-        # PART 5: Highest-Yield Exam Synthesis
+        # =========================================================
+        # PART 6: Highest-Yield Exam Synthesis
+        # =========================================================
         lines.extend([
             '#v(0.4cm)',
             '#text(size: 11pt, weight: "bold")[🎯 सर्वोच्च प्राधान्य परीक्षाभिमुख संकलन (Highest-Yield Exam Synthesis)]',
             '#line(length: 100%, stroke: 0.75pt + black)',
             '#v(0.15cm)',
         ])
-        for idx, art in enumerate(major_articles[:4], 1):
+        top_picks = (major_ca[:2] + editorials[:2]) if editorials else major_ca[:4]
+        for idx, art in enumerate(top_picks, 1):
             title_esc = escape_typst(art.title)
             ca_id = f"CA-{date_code}-{idx:02d}"
             takeaway = escape_typst(art.summary_bullets[0] if art.summary_bullets else art.full_text[:180])
