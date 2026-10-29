@@ -1,0 +1,15 @@
+id,screen,feature,tier,flow,notes
+F01,S01,Vertical full-screen auto-looping video player,must,F01,Immediate video playback on launch with preloading buffer
+F02,S01,For You vs Following top tab switcher,must,F01,Toggles between algorithmic discovery and creator feed
+F03,S01,Like animation and counter (double-tap & heart icon),must,F01,Double-tap heart burst animation with optimistic counter increment
+F04,S02,Slide-up comment drawer with nested replies,must,F01,Lazy-loaded comments tree with input bar
+F05,S01,Share drawer & direct link copy,should,F01,Generates unique shareable URL with referral tracking
+F06,S01,Spinning audio disc & marquee ticker,must,F03,Vinyl animation linked to audio playback state
+F07,S05,Camera recording interface with duration toggle (15s/60s),must,F02,Record button progress fill with segment undo
+F08,S05,Gallery media upload selector,must,F02,Local file picker with aspect ratio validation (9:16)
+F09,S06,Publish details: caption, hashtags, and privacy,must,F02,Text input with hashtag chip autocomplete
+F10,S07,Audio track details and catalog of videos using sound,should,F03,Audio playback preview with video grid
+F11,S08,Creator profile with follower stats & 3-column video grid,must,F01,Displays play counts, bio, and follow/edit action
+F12,S04,Search and discovery by hashtag / sound / creator,should,F03,Search indexing across username, hashtags, and sound titles
+F13,S09,Activity notifications inbox,could,F01,Event stream for likes, comments, and new followers
+F14,S10,Authentication via email/OAuth/phone,must,F01,Session management and profile creation
