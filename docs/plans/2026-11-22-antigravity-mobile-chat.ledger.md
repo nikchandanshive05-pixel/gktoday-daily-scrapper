@@ -15,4 +15,6 @@
 - [x] Task 7: End-to-End Build & Automated Packaging Script
 
 ## Rulings & Decisions
-- None yet.
+- Architecture Review Pass: Resolved FastAPI/uvicorn server binding, fixed Kotlin Compose typos, wired interactive lock-screen notifications, and integrated GitHub Actions CI APK build pipeline.
+- Test Suite: 12/12 unit tests passing cleanly.
+- Status: Completed and Ready for Deployment.
