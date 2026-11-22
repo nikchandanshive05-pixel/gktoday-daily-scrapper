@@ -8,7 +8,8 @@ from typing import Dict, Any, Set, Optional
 from pathlib import Path
 
 # Ensure UTF-8 output on Windows
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 from tools.antigravity_bridge.config import DEFAULT_PORT, DEFAULT_PIN_FILE, BRAIN_DIR, CONFIG_DIR
 from tools.antigravity_bridge.auth import PairingManager
