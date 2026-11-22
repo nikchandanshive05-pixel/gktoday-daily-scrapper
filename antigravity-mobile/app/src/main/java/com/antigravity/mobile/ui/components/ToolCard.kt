@@ -39,7 +39,7 @@ fun ToolCard(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
-                verticalAlignment = Alignment.CenterVertifally,
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { expanded = !expanded }

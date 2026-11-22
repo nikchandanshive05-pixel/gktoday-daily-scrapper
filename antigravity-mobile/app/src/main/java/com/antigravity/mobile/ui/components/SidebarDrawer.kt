@@ -152,7 +152,7 @@ fun SidebarDrawer(
                 }
             }
 
-            Divider(color = Color.DarkGray, thickness = 0.5.dp)
+            HorizontalDivider(color = Color.DarkGray, thickness = 0.5.dp)
 
             // Footer Workspace
             Row(

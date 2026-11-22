@@ -12,7 +12,7 @@
 - [x] Task 4: Android App - Project Scaffold, mDNS Discovery & WebSocket Engine
 - [x] Task 5: Android App - ChatGPT/Claude-Style Chat Canvas & Navigation Drawer
 - [x] Task 6: Android App - Foreground Service & Interactive Lock-Screen Approvals
-- [ ] Task 7: End-to-End Build & Automated Packaging Script
+- [x] Task 7: End-to-End Build & Automated Packaging Script
 
 ## Rulings & Decisions
 - None yet.

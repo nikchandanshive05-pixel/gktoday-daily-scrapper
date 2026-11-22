@@ -1,0 +1,55 @@
+name: Build and Release Antigravity Mobile APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x antigravity-mobile/gradlew
+
+    - name: Build Debug APK with Gradle
+      working-directory: antigravity-mobile
+      run: ./gradlew assembleDebug --stacktrace
+
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: AntigravityMobile-Debug-APK
+        path: antigravity-mobile/app/build/outputs/apk/debug/*.apk
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      if: github.ref == 'refs/heads/main'
+      with:
+        tag_name: mobile-v1.0.0-b${{ github.run_number }}
+        name: Antigravity Mobile v1.0.0 (Build ${{ github.run_number }})
+        body: |
+          🚀 **Antigravity Mobile Release**
+          
+          Native Android remote companion for Google Antigravity:
+          - 💬 **ChatGPT / Claude / Gemini Chat Canvas**: Real-time token streaming, 120Hz smooth scrolling.
+          - 🛠️ **Collapsible Tool Execution Cards**: Live view of terminal commands, file diffs, and subagents.
+          - 🔐 **Lock-Screen Action Approvals**: Heads-up notifications with `[Proceed]` / `[Deny]` buttons.
+          - 📂 **Full Sidebar & Workspace Navigation**: Switch projects and browse past transcripts.
+          - 🤖 **Telegram Dual-Channel Sync**: Out-of-home alerts and remote approvals.
+        files: antigravity-mobile/app/build/outputs/apk/debug/*.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

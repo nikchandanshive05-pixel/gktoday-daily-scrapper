@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.antigravity.mobile.MainActivity
 
 class NotificationReceiver : BroadcastReceiver() {
 
@@ -22,11 +23,11 @@ class NotificationReceiver : BroadcastReceiver() {
         when (intent.action) {
             ACTION_APPROVE -> {
                 Log.d("NotificationReceiver", "User tapped APPROVE for action: $actionId")
-                // Resolve action asynchronously
+                MainActivity.instance?.resolveAction(actionId, approve = true)
             }
             ACTION_DENY -> {
                 Log.d("NotificationReceiver", "User tapped DENY for action: $actionId")
-                // Resolve action asynchronously
+                MainActivity.instance?.resolveAction(actionId, approve = false)
             }
         }
     }

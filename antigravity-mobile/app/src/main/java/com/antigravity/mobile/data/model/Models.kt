@@ -54,6 +54,7 @@ data class ConversationItem(
 sealed class ConnectionState {
     object Disconnected : ConnectionState()
     object Discovering : ConnectionState()
+    object Connecting : ConnectionState()
     data class PairingRequired(val host: String, val port: Int) : ConnectionState()
     data class Connected(val host: String, val port: Int, val deviceName: String) : ConnectionState()
     data class Error(val message: String) : ConnectionState()

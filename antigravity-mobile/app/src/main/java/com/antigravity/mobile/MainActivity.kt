@@ -1,6 +1,8 @@
 package com.antigravity.mobile
 
+import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -18,6 +20,7 @@ import com.antigravity.mobile.data.network.SocketEvent
 import com.antigravity.mobile.service.AntigravityForegroundService
 import com.antigravity.mobile.ui.components.SidebarDrawer
 import com.antigravity.mobile.ui.screens.ChatScreen
+import com.antigravity.mobile.ui.screens.ManualPairingDialog
 import com.antigravity.mobile.ui.theme.AntigravityTheme
 import kotlinx.coroutines.launch
 
@@ -25,10 +28,18 @@ class MainActivity : ComponentActivity() {
 
     private val socketClient = AntigravitySocketClient()
     private lateinit var discoveryManager: NsdDiscoveryManager
+    private lateinit var prefs: SharedPreferences
+
+    companion object {
+        var instance: MainActivity? = null
+            private set
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        instance = this
         discoveryManager = NsdDiscoveryManager(this)
+        prefs = getSharedPreferences("antigravity_prefs", Context.MODE_PRIVATE)
 
         setContent {
             AntigravityTheme {
@@ -39,6 +50,9 @@ class MainActivity : ComponentActivity() {
                 val messages = remember { mutableStateListOf<ChatMessage>() }
                 val conversations = remember { mutableStateListOf<ConversationItem>() }
                 var currentConversationId by remember { mutableStateOf<String?>(null) }
+                var pendingHost by remember { mutableStateOf<String?>(null) }
+                var pendingPort by remember { mutableStateOf(8765) }
+                var showPinPrompt by remember { mutableStateOf(false) }
 
                 // Add welcome initial message
                 LaunchedEffect(Unit) {
@@ -57,9 +71,16 @@ class MainActivity : ComponentActivity() {
                         discoveryManager.discoverServices().collect { event ->
                             when (event) {
                                 is DiscoveryEvent.Found -> {
-                                    connectionState = ConnectionState.PairingRequired(event.host, event.port)
-                                    // Connect automatically if paired or prompt PIN
-                                    socketClient.connect(event.host, event.port, "1234") // default pin or cached
+                                    pendingHost = event.host
+                                    pendingPort = event.port
+                                    val savedPin = prefs.getString("last_pin", null)
+                                    if (!savedPin.isNullOrEmpty()) {
+                                        connectionState = ConnectionState.Connecting
+                                        socketClient.connect(event.host, event.port, savedPin)
+                                    } else {
+                                        connectionState = ConnectionState.PairingRequired(event.host, event.port)
+                                        showPinPrompt = true
+                                    }
                                 }
                                 is DiscoveryEvent.Lost -> {
                                     connectionState = ConnectionState.Disconnected
@@ -76,9 +97,16 @@ class MainActivity : ComponentActivity() {
                         socketClient.events.collect { event ->
                             when (event) {
                                 is SocketEvent.Connected -> {
-                                    connectionState = ConnectionState.Connected("PC", 8765, "Desktop")
+                                    connectionState = ConnectionState.Connected("PC", pendingPort, "Desktop")
                                     socketClient.requestConversations()
                                     startCompanionService()
+                                }
+                                is SocketEvent.Authenticated -> {
+                                    prefs.edit().putString("auth_token", event.token).apply()
+                                }
+                                is SocketEvent.AuthFailed -> {
+                                    connectionState = ConnectionState.Error("Authentication failed: ${event.reason}")
+                                    showPinPrompt = true
                                 }
                                 is SocketEvent.TokenChunk -> {
                                     val last = messages.lastOrNull()
@@ -105,6 +133,8 @@ class MainActivity : ComponentActivity() {
                                             pendingApproval = event.action
                                         )
                                     )
+                                    // Trigger Heads-Up Lock Screen Notification
+                                    showApprovalHeadsUp(event.action.id, event.action.description)
                                 }
                                 is SocketEvent.ActionResolved -> {
                                     val idx = messages.indexOfFirst { it.pendingApproval?.id == event.actionId }
@@ -169,22 +199,51 @@ class MainActivity : ComponentActivity() {
                             socketClient.sendPrompt(prompt, currentConversationId)
                         },
                         onApproveAction = { actionId ->
-                            socketClient.resolveAction(actionId, approve = true)
+                            resolveAction(actionId, approve = true)
                         },
                         onDenyAction = { actionId ->
-                            socketClient.resolveAction(actionId, approve = false)
+                            resolveAction(actionId, approve = false)
                         },
                         onOpenDrawer = {
                             scope.launch { drawerState.open() }
                         },
                         onManualConnect = { host, port, pin ->
                             connectionState = ConnectionState.Connecting
+                            prefs.edit().putString("last_pin", pin).apply()
                             socketClient.connect(host, port, pin)
                         },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
+
+                if (showPinPrompt && pendingHost != null) {
+                    ManualPairingDialog(
+                        onDismiss = { showPinPrompt = false },
+                        onConnect = { host, port, pin ->
+                            showPinPrompt = false
+                            prefs.edit().putString("last_pin", pin).apply()
+                            connectionState = ConnectionState.Connecting
+                            socketClient.connect(host, port, pin)
+                        }
+                    )
+                }
             }
+        }
+    }
+
+    fun resolveAction(actionId: String, approve: Boolean) {
+        socketClient.resolveAction(actionId, approve)
+    }
+
+    private fun showApprovalHeadsUp(actionId: String, description: String) {
+        val intent = Intent(this, AntigravityForegroundService::class.java).apply {
+            putExtra("action_id", actionId)
+            putExtra("action_desc", description)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
         }
     }
 
@@ -199,6 +258,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        instance = null
         socketClient.disconnect()
     }
 }
