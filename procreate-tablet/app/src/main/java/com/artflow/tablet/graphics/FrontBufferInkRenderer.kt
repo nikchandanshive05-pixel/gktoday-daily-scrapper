@@ -26,12 +26,13 @@ class FrontBufferInkRenderer(
         compositor.renderStamp(layer, param, config, color)
     }
 
-    override fun onDrawDoubleBufferedLayer(
+    override fun onDrawMultiDoubleBufferedLayer(
         eglManager: EGLManager,
         bufferInfo: BufferInfo,
         transform: FloatArray,
         params: Collection<StrokePoint>
     ) {
+        // Full composition pass on stroke completion or viewport invalidation
         compositor.compositeAllLayersToTarget(document, 0)
     }
 }
