@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Remote Controller Chassis -->
+    <path
+        android:fillColor="#1E2430"
+        android:strokeColor="#0078FF"
+        android:strokeWidth="2"
+        android:pathData="M38,18 h32 a14,14 0 0 1 14,14 v44 a14,14 0 0 1 -14,14 h-32 a14,14 0 0 1 -14,-14 v-44 a14,14 0 0 1 14,-14 z" />
+    
+    <!-- Power Button -->
+    <path
+        android:fillColor="#E50914"
+        android:pathData="M44,28 a4,4 0 1 0 8,0 a4,4 0 1 0 -8,0" />
+
+    <!-- D-Pad Blue Metallic Ring -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#00C6FF"
+        android:strokeWidth="2.5"
+        android:pathData="M54,54 m-16,0 a16,16 0 1,1 32,0 a16,16 0 1,1 -32,0" />
+
+    <!-- OK Center Button -->
+    <path
+        android:fillColor="#0078FF"
+        android:pathData="M54,54 m-7,0 a7,7 0 1,1 14,0 a7,7 0 1,1 -14,0" />
+
+    <!-- App shortcut dots -->
+    <path
+        android:fillColor="#0088FF"
+        android:pathData="M44,78 h6 v4 h-6 z" />
+    <path
+        android:fillColor="#D81B60"
+        android:pathData="M58,78 h6 v4 h-6 z" />
+</vector>
