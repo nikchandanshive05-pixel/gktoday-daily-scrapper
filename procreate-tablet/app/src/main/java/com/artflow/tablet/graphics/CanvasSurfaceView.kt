@@ -6,7 +6,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
-import androidx.graphics.opengl.GLFrontBufferedRenderer
+import androidx.graphics.lowlatency.GLFrontBufferedRenderer
 import com.artflow.tablet.brush.BrushConfig
 import com.artflow.tablet.brush.BrushType
 import com.artflow.tablet.brush.StrokePoint

@@ -1,8 +1,7 @@
 package com.artflow.tablet.graphics
 
-import android.opengl.GLES30
-import androidx.graphics.opengl.GLFrontBufferedRenderer
-import androidx.graphics.opengl.GLRenderer
+import androidx.graphics.lowlatency.GLFrontBufferedRenderer
+import androidx.graphics.opengl.egl.EGLManager
 import com.artflow.tablet.brush.BrushConfig
 import com.artflow.tablet.brush.StrokePoint
 import com.artflow.tablet.model.CanvasDocument
@@ -15,9 +14,10 @@ class FrontBufferInkRenderer(
 ) : GLFrontBufferedRenderer.Callback<StrokePoint> {
 
     override fun onDrawFrontBufferedLayer(
-        eglManager: GLSurfaceControlManager,
-        width: Int,
-        height: Int,
+        eglManager: EGLManager,
+        bufferWidth: Int,
+        bufferHeight: Int,
+        transform: FloatArray,
         param: StrokePoint
     ) {
         // Fast front-buffer wet ink stroke rendering directly to display overlay
@@ -28,15 +28,13 @@ class FrontBufferInkRenderer(
     }
 
     override fun onDrawDoubleBufferedLayer(
-        eglManager: GLSurfaceControlManager,
-        width: Int,
-        height: Int,
+        eglManager: EGLManager,
+        bufferWidth: Int,
+        bufferHeight: Int,
+        transform: FloatArray,
         params: Collection<StrokePoint>
     ) {
         // Full composition pass on stroke completion or viewport invalidation
         compositor.compositeAllLayersToTarget(document, 0)
     }
 }
-
-// Typealias bridge for callback signatures
-typealias GLSurfaceControlManager = GLRenderer.RenderCallback
