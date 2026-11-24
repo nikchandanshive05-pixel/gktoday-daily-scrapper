@@ -145,14 +145,36 @@ class LayerCompositor(val width: Int, val height: Int) {
         layer: ArtLayer,
         point: StrokePoint,
         config: BrushConfig,
+        colorRgba: FloatArray,
+        frontBufferFbo: Int = -1,
+        bufferWidth: Int = width,
+        bufferHeight: Int = height
+    ) {
+        ensureLayerTexture(layer)
+        val fbo = layerFbos[layer.id] ?: return
+
+        // 1. Render stamp into the active layer's offscreen FBO
+        drawStampToTarget(fbo, width, height, point, config, colorRgba)
+
+        // 2. Also render stamp directly into the front-buffer so the user sees the stroke immediately
+        if (frontBufferFbo >= 0) {
+            drawStampToTarget(frontBufferFbo, bufferWidth, bufferHeight, point, config, colorRgba)
+        }
+    }
+
+    private fun drawStampToTarget(
+        targetFbo: Int,
+        viewportWidth: Int,
+        viewportHeight: Int,
+        point: StrokePoint,
+        config: BrushConfig,
         colorRgba: FloatArray
     ) {
-        val fbo = layerFbos[layer.id] ?: return
         val radius = config.calculateRadius(point.pressure)
         val alpha = config.calculateAlpha(point.pressure)
 
-        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, fbo)
-        GLES30.glViewport(0, 0, width, height)
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, targetFbo)
+        GLES30.glViewport(0, 0, viewportWidth, viewportHeight)
 
         GLES30.glEnable(GLES30.GL_BLEND)
         // Premultiplied alpha blending equation
@@ -164,7 +186,10 @@ class LayerCompositor(val width: Int, val height: Int) {
         val uColor = GLES30.glGetUniformLocation(brushProgram, "uColor")
         val uHardness = GLES30.glGetUniformLocation(brushProgram, "uHardness")
 
-        GLES30.glUniformMatrix4fv(uProj, 1, false, projectionMatrix, 0)
+        val targetProj = FloatArray(16)
+        Matrix.orthoM(targetProj, 0, 0f, viewportWidth.toFloat(), viewportHeight.toFloat(), 0f, -1f, 1f)
+
+        GLES30.glUniformMatrix4fv(uProj, 1, false, targetProj, 0)
         GLES30.glUniform4f(uColor, colorRgba[0], colorRgba[1], colorRgba[2], colorRgba[3] * alpha)
         GLES30.glUniform1f(uHardness, config.hardness)
 
@@ -207,9 +232,14 @@ class LayerCompositor(val width: Int, val height: Int) {
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
     }
 
-    fun compositeAllLayersToTarget(document: CanvasDocument, targetFbo: Int = 0) {
+    fun compositeAllLayersToTarget(
+        document: CanvasDocument,
+        targetFbo: Int = 0,
+        targetWidth: Int = width,
+        targetHeight: Int = height
+    ) {
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, targetFbo)
-        GLES30.glViewport(0, 0, width, height)
+        GLES30.glViewport(0, 0, targetWidth, targetHeight)
 
         // Clear canvas with background color
         val bg = document.backgroundColor

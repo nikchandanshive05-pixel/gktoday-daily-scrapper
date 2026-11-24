@@ -15,7 +15,7 @@ interface DrawingInteractionCallback {
 }
 
 class TouchInputHandler(
-    var inputMode: InputMode = InputMode.STYLUS_ONLY,
+    var inputMode: InputMode = InputMode.FINGER_DRAWING,
     val gestureListener: CanvasGestureListener,
     val drawingCallback: DrawingInteractionCallback
 ) {

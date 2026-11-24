@@ -31,8 +31,8 @@ fun MainDrawingScreen() {
     var activeTool by remember { mutableStateOf(BrushType.STUDIO_PEN) }
     var brushSizePercent by remember { mutableFloatStateOf(0.15f) }
     var brushOpacityPercent by remember { mutableFloatStateOf(1.0f) }
-    var activeColor by remember { mutableStateOf(Color(0xFF2C2C2E)) }
-    var inputMode by remember { mutableStateOf(InputMode.STYLUS_ONLY) }
+    var activeColor by remember { mutableStateOf(Color(0xFF1A1A1A)) }
+    var inputMode by remember { mutableStateOf(InputMode.FINGER_DRAWING) }
 
     var showLayersPanel by remember { mutableStateOf(false) }
     var showColorPicker by remember { mutableStateOf(false) }
@@ -63,9 +63,7 @@ fun MainDrawingScreen() {
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ProDarkBackground)
+        modifier = Modifier.fillMaxSize()
     ) {
         // 1. Full-Screen OpenGL Canvas SurfaceView
         AndroidView(

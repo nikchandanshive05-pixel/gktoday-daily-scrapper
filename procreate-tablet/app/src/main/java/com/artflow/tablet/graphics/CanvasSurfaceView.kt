@@ -28,24 +28,28 @@ class CanvasSurfaceView @JvmOverloads constructor(
 
     init {
         holder.addCallback(this)
-        holder.setFormat(PixelFormat.TRANSLUCENT)
+        setZOrderMediaOverlay(true)
         isFocusable = true
         isFocusableInTouchMode = true
-    }
-
-    override fun surfaceCreated(holder: SurfaceHolder) {
-        val comp = LayerCompositor(document.width, document.height)
-        comp.initializeGl()
-        compositor = comp
 
         val inkCallback = FrontBufferInkRenderer(
             document = document,
-            compositor = comp,
+            compositor = { compositor },
             activeBrushConfig = { activeBrushConfig },
             activeColorRgba = { activeColorRgba }
         )
 
         frontBufferedRenderer = GLFrontBufferedRenderer(this, inkCallback)
+    }
+
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        if (compositor == null) {
+            val comp = LayerCompositor(document.width, document.height)
+            comp.initializeGl()
+            compositor = comp
+        }
+        // Paint clean white paper canvas immediately on launch
+        frontBufferedRenderer?.commit()
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
