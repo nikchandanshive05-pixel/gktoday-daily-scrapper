@@ -1,0 +1,70 @@
+name: Build & Release Procreate Tablet APK
+
+on:
+  push:
+    paths:
+      - 'procreate-tablet/**'
+      - '.github/workflows/build_procreate_tablet.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Grant execute permission for gradlew
+        working-directory: procreate-tablet
+        run: chmod +x gradlew
+
+      - name: Build Debug APK
+        working-directory: procreate-tablet
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Rename APK for release
+        run: |
+          mkdir -p build_output
+          cp procreate-tablet/app/build/outputs/apk/debug/app-debug.apk build_output/procreate-tablet-v1.0.0-debug.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProcreateTablet-Debug-APK
+          path: build_output/procreate-tablet-v1.0.0-debug.apk
+          retention-days: 14
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: procreate-tablet-v1.0.0
+          name: Procreate Tablet v1.0.0
+          body: |
+            🎨 **Procreate Tablet for Android v1.0.0**
+            
+            Bespoke digital painting app for Android tablets & Samsung S-Pen:
+            - ✏️ **Ultra-Low Latency Engine**: OpenGL ES 3.0 + `GLFrontBufferedRenderer` with S-Pen prediction.
+            - 🎚️ **Procreate Side Sliders**: Dynamic edge sliders for Brush Size & Opacity with Quick Eyedropper.
+            - 🖐️ **Flawless Palm Rejection**: Toggle between **S-Pen Only** and **Finger Drawing Mode**.
+            - ↩️ **Gestures**: 2-finger tap Undo, 3-finger tap Redo, 2-finger pinch/zoom/rotate.
+            - 🪄 **ShapeSnap**: Hold stroke end for 400ms to auto-snap into clean lines, circles, ellipses, and rectangles.
+            - 💧 **DropFill**: Dilated scanline flood fill (no white fringing).
+            - 📑 **Layers & Blend Modes**: Multi-layer stack with Multiply, Screen, Overlay, Color Dodge, and Alpha Lock.
+            - 💾 **Packaging**: `.canvas` project container format with crash recovery journal.
+          files: build_output/procreate-tablet-v1.0.0-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
