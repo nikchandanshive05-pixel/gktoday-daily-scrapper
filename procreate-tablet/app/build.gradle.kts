@@ -6,12 +6,12 @@ plugins {
 
 android {
     namespace = "com.artflow.tablet"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.artflow.tablet"
         minSdk = 29
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
 
