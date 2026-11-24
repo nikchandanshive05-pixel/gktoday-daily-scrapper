@@ -16,6 +16,8 @@ class FrontBufferInkRenderer(
 
     override fun onDrawFrontBufferedLayer(
         eglManager: EGLManager,
+        width: Int,
+        height: Int,
         bufferInfo: BufferInfo,
         transform: FloatArray,
         param: StrokePoint
@@ -26,8 +28,10 @@ class FrontBufferInkRenderer(
         compositor.renderStamp(layer, param, config, color)
     }
 
-    override fun onDrawMultiDoubleBufferedLayer(
+    override fun onDrawMultiBufferedLayer(
         eglManager: EGLManager,
+        width: Int,
+        height: Int,
         bufferInfo: BufferInfo,
         transform: FloatArray,
         params: Collection<StrokePoint>
