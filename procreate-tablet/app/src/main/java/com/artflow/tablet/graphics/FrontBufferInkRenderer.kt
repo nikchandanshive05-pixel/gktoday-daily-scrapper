@@ -1,5 +1,6 @@
 package com.artflow.tablet.graphics
 
+import androidx.graphics.lowlatency.BufferInfo
 import androidx.graphics.lowlatency.GLFrontBufferedRenderer
 import androidx.graphics.opengl.egl.EGLManager
 import com.artflow.tablet.brush.BrushConfig
@@ -15,12 +16,10 @@ class FrontBufferInkRenderer(
 
     override fun onDrawFrontBufferedLayer(
         eglManager: EGLManager,
-        bufferWidth: Int,
-        bufferHeight: Int,
+        bufferInfo: BufferInfo,
         transform: FloatArray,
         param: StrokePoint
     ) {
-        // Fast front-buffer wet ink stroke rendering directly to display overlay
         val layer = document.activeLayer
         val config = activeBrushConfig()
         val color = activeColorRgba()
@@ -29,12 +28,10 @@ class FrontBufferInkRenderer(
 
     override fun onDrawDoubleBufferedLayer(
         eglManager: EGLManager,
-        bufferWidth: Int,
-        bufferHeight: Int,
+        bufferInfo: BufferInfo,
         transform: FloatArray,
         params: Collection<StrokePoint>
     ) {
-        // Full composition pass on stroke completion or viewport invalidation
         compositor.compositeAllLayersToTarget(document, 0)
     }
 }
